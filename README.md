@@ -1,12 +1,16 @@
+<p align="center">
+  <img src="frontend/public/brand-lockup.png" alt="Video Archive Manager" width="320">
+</p>
+
 # Video Archive Manager（VAM）
 
 VAM 是一套自行架設（Self-hosted）的影片與照片收藏管理系統，專門用來管理大量、分散於本機硬碟與 NAS 的影音收藏。
 
 系統透過瀏覽器操作，電腦、手機、平板都能用，不需要在每台裝置安裝客戶端。
 
-實測規模：
+作者自己的收藏規模（2026 年 10 月實測）：
 
-- 🎬 **30,000+ 部影片**
+- 🎬 **30,000+ 部影片**，約 8 TB
 - 👤 **730 位角色**
 - 🖼️ **160,000+ 張照片**
 - 💾 分散在 8 顆本機硬碟與 NAS
