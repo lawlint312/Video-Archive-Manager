@@ -2,7 +2,7 @@
   <img src="frontend/public/brand-lockup.png" alt="Video Archive Manager" width="320">
 </p>
 
-<p align="center"><b>繁體中文</b> ｜ <a href="#english">English</a></p>
+<p align="center"><b>繁體中文</b> ｜ <a href="README.en.md">English</a></p>
 
 # Video Archive Manager（VAM）
 
@@ -18,6 +18,10 @@ VAM 是一套自行架設（Self-hosted）的影片與照片收藏管理系統�
 - 💾 分散在 8 顆本機硬碟與 NAS
 
 > VAM 只管理你自己的檔案，**不包含、也不提供任何影音內容**。
+
+<p align="center"><img src="screenshots/home.jpg" alt="主頁：依分類顯示角色，每個分類可以有不同的卡片形狀" width="900"></p>
+
+<sub>本頁截圖都來自示範資料庫：人物與照片皆為 AI 生成的虛構角色。</sub>
 
 ---
 
@@ -47,11 +51,35 @@ VAM 以 **「角色（Person）」** 為主要的資料整理核心。
 - **封面**：認得 Kodi／Jellyfin 慣例的 `番號-poster.jpg`（直式）與 `番號-fanart.jpg`（橫式），依卡片比例自動選圖。
 - **播放器**：外掛字幕（SRT／ASS／VTT，雙語字幕自動合併）、觀看紀錄、備忘、手動片名、音量記憶與快捷鍵。
 
+<table>
+  <tr>
+    <td width="50%"><img src="screenshots/character-videos.jpg" alt="角色的影片清單"></td>
+    <td width="50%"><img src="screenshots/contact-sheet.jpg" alt="縮圖表"></td>
+  </tr>
+  <tr>
+    <td align="center">角色的影片：封面、看過與最愛標記、篩選與排序</td>
+    <td align="center">縮圖表：不用播完就知道內容</td>
+  </tr>
+</table>
+
 ## 🖼️ 照片管理
 
 - 每位角色獨立的照片牆，可依時間、名稱、檔案大小、**相似度**（構圖＋顏色）排序，也能用相簿方式瀏覽。
 - 縮圖由伺服器產生並快取，點開才是原圖。
 - **手機版**：照片上下滑動切換、雙指縮放，介面針對觸控重新排版。
+
+<table>
+  <tr>
+    <td width="40%"><img src="screenshots/character-profile.jpg" alt="角色的個人資料與照片牆"></td>
+    <td width="40%"><img src="screenshots/albums.jpg" alt="依子資料夾分成相簿"></td>
+    <td width="20%"><img src="screenshots/mobile.jpg" alt="手機版"></td>
+  </tr>
+  <tr>
+    <td align="center">個人資料、社群連結與照片牆</td>
+    <td align="center">依子資料夾分成相簿</td>
+    <td align="center">手機版</td>
+  </tr>
+</table>
 
 ---
 
@@ -62,6 +90,8 @@ VAM 以 **「角色（Person）」** 為主要的資料整理核心。
 - **角色管理**：改名、合併角色資料夾、自訂標籤（可直接用來篩選）、社群連結、個人資料、大頭照框選。
 - **NFO**：讀入與寫出 Kodi／Jellyfin／Emby 的 `.nfo`，讀入時只補空的欄位，不覆蓋你改過的。
 
+<p align="center"><img src="screenshots/inbox.jpg" alt="待分類：新下載的影片先放這裡，確認後再歸檔" width="800"></p>
+
 ---
 
 # 🔍 重複檔案掃描
@@ -69,6 +99,8 @@ VAM 以 **「角色（Person）」** 為主要的資料整理核心。
 - **影片**：先比大小與雜湊（完全相同），再比時長與畫面指紋（同一部、不同畫質或版本），並建議保留哪一個。
 - **圖片**：比對完全相同與高度相似的照片，認得浮水印版本。
 - 掃描可以中途停止、伺服器重啟後自動接回；刪除前都會先列清單給你確認。
+
+<p align="center"><img src="screenshots/duplicates.jpg" alt="重複掃描結果：完全相同的檔案，以及不同畫質的同一部影片" width="800"></p>
 
 ---
 
@@ -90,6 +122,8 @@ VAM 以 **「角色（Person）」** 為主要的資料整理核心。
 - **完整解碼檢查**：逐格解碼一遍，找出看起來正常、其實中間壞掉的檔案。
 - **壓縮**：重新編碼換取空間，**一律另存新檔**；可以把原始版本與壓縮版本並排同步播放，比較畫質後再決定留哪個。
 - **✂️ 剪輯**：一次選多個片段並合併成一支影片；先從縮圖表選大致範圍，再用播放器微調。可選「快速（吸附關鍵幀、不損失畫質）」或「精準到格（重新編碼）」。
+
+<p align="center"><img src="screenshots/player.jpg" alt="播放器：片名與備忘直接在播放時編輯" width="800"></p>
 
 ---
 
@@ -114,6 +148,8 @@ VAM 以 **「角色（Person）」** 為主要的資料整理核心。
 - **異常通知**：從沒用過的位址登入成功、兩步驟驗證被關閉等事件會提醒管理員；可以查看並登出任一台登入中的裝置。
 - **對外連線**：預設只接受區網與 VPN 來源。要從外面連時，可搭配 Caddy 申請正式 HTTPS 憑證（範本在 `caddy/Caddyfile.example`）。
 - **備份**：每天把資料庫備份到你指定的另一顆硬碟。
+
+<p align="center"><img src="screenshots/permissions.jpg" alt="權限組：逐項勾選每一組能用的功能" width="800"></p>
 
 ---
 
@@ -272,45 +308,6 @@ node tests\mount.test.mjs
 VAM 將影片瀏覽、角色管理、照片管理、重複掃描、人臉辨識、人物偵測、影片轉檔、壓縮、剪輯與外部資料匯入整合在同一套 Web 系統中。
 
 > **讓管理大量影音收藏，從繁瑣的檔案整理工作，變成可以透過瀏覽器快速完成的日常流程。**
-
----
-
-## English
-
-VAM (Video Archive Manager) is a self-hosted manager for large video and photo collections spread across local drives and a NAS. It runs in the browser, so it works on desktop, phone and tablet without installing any client.
-
-Tested at **30,000+ videos, 730 people and 160,000+ photos** across 8 local drives and a NAS.
-
-> **The interface is in Traditional Chinese only for now.** VAM manages your own files; it contains and provides no media.
-
-Everything is organised around **people**: each person is a folder holding their videos, photos and a `person_info.json` with their profile, tags and links. The profile lives next to the files, so moving the folder moves the data. New downloads land in an **inbox** and are filed to a person once reviewed; watch history and titles follow the files.
-
-- **Browse and watch**: custom categories and card shapes, sorting and filters (unwatched, favourites), library-wide filename and product-code search, contact sheets, Kodi/Jellyfin-style `-poster.jpg`/`-fanart.jpg` covers, a player with external and bilingual subtitles, watch history and notes.
-- **Photos**: per-person photo walls sorted by date, size or visual similarity; album view; swipe and pinch-zoom on phones.
-- **Organise**: inbox workflow, rename and merge people, tags and links, read and write `.nfo` files (Kodi, Jellyfin, Emby).
-- **Duplicate scans** for videos (hash, then duration and frame fingerprints) and images (hash, then perceptual hash); stoppable and resumed after a restart; nothing is deleted without a confirmed list.
-- **Video tools**, all verified before the original is removed: convert (remux first, re-encode only when needed), repair, full decode check, re-encode to save space (always to a new file, with a side-by-side comparison), and multi-segment clipping.
-- **Metadata**: titles and release dates from DMM's public catalogue, covers, profiles from JAVDatabase, avatars from [Gfriends](https://github.com/gfriends/gfriends), and imports from saved Seesaa Wiki, IAFD and AVBase pages.
-- **Optional AI**: face recognition that suggests who appears in inbox videos (NVIDIA GPU), and person detection that finds photos with nobody in them (GPU optional).
-- **Accounts and security**: custom permission groups enforced on the server, per-account folder access, TOTP two-factor (required for accounts that can edit), login throttling, alerts for sign-ins from new addresses, daily database backups.
-
-**Install** (Windows 10/11; the backend is Python and may run elsewhere, untested). Python 3.11+, FFmpeg on the PATH, and Node.js to build the web interface once:
-
-```bat
-git clone https://github.com/lawlint312/Video-Archive-Manager.git
-cd Video-Archive-Manager
-pip install -r backend/requirements.txt Pillow
-cd frontend
-npm install
-npm run build
-cd ..
-set VAM_ADMIN_PASSWORD=your-password
-start.bat
-```
-
-Then open **http://localhost:8301/**, sign in as `admin`, and add your library and inbox folders under Settings. The AI features are installed separately with `backend/requirements-ai.txt` (about 10 GB, see 「AI 功能」 above). The insightface `buffalo_l` model is licensed for non-commercial research only.
-
-Licensed under AGPL-3.0.
 
 ---
 
