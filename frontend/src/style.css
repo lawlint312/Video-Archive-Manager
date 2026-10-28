@@ -1,0 +1,78 @@
+:root {
+  --bg: #1e1e2e;
+  --panel: #252535;
+  --card: #2d2d3f;
+  --hover: #3a3a55;
+  --accent: #7c7cf0;
+  --text: #cdd6f4;
+  --dim: #6c7086;
+  --danger: #f38ba8;
+  --success: #a6e3a1;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+button {
+  cursor: pointer;
+  font-family: inherit;
+}
+
+input {
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid #555;
+  border-radius: 5px;
+  padding: 8px 10px;
+  font-size: 14px;
+}
+input:focus { outline: none; border-color: var(--accent); }
+
+.btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  padding: 8px 16px;
+  font-size: 14px;
+}
+.btn:hover { background: #9090ff; }
+.btn.ghost {
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid #555;
+}
+.btn.ghost:hover { background: var(--hover); }
+
+/* icon + text: keeps a Lucide glyph and its label on one baseline */
+.ib { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Hidden on phones. The edit-mode batch tools (轉檔, 重複掃描, 角色查詢…) all
+   open large dialogs built for a mouse and a wide window; on a 375px screen
+   they are unusable rather than merely cramped. Delete mode is the one edit
+   feature that survives — spotting a bad file while browsing on the sofa is
+   exactly when you want it.
+   `!important` because most of these carry `.ib`/`.btn`, which set display. */
+@media (max-width: 760px), (pointer: coarse) and (max-height: 500px) { .no-mobile { display: none !important; } }
+/* The mirror image: shown on phones only (e.g. an icon standing in for a label
+   that a `.no-mobile` span hides). */
+/* Set on the page's scroller while a full-screen viewer is up (SheetViewer),
+   so a drag on the overlay cannot scroll the page underneath it. */
+.scroll-locked { overflow: hidden !important; }
+.mobile-only { display: none; }
+@media (max-width: 760px), (pointer: coarse) and (max-height: 500px) { .mobile-only { display: revert; } }
+/* iOS Safari zooms the whole page when an input under 16px gets focus, and
+   does not zoom back out when it loses it. Every field here was 14px or less,
+   so logging in left the app zoomed: narrow, its left edge cut off, until the
+   user pinched it back. 16px on a phone stops the zoom without disabling
+   pinch-zoom for anyone. `!important` because several components set their
+   own smaller size on their inputs (scoped, so more specific than this). */
+@media (max-width: 760px), (pointer: coarse) and (max-height: 500px) {
+  input, textarea, select { font-size: 16px !important; }
+}

@@ -1,0 +1,28 @@
+# Optional: face recognition and person detection (NVIDIA GPU).
+#
+#   pip install -r backend/requirements-ai.txt
+#
+# Nothing here is needed to run VAM. Each feature checks for its own packages
+# and model and says what is missing instead of failing. Versions are the ones
+# this project runs with; the CUDA 12.9 builds need a recent NVIDIA driver.
+#
+# Windows: insightface has no prebuilt wheel and compiles on install, which
+# needs Microsoft C++ Build Tools ("Desktop development with C++").
+
+# PyTorch's CUDA builds come from its own index, not PyPI (about 7.5 GB installed).
+--extra-index-url https://download.pytorch.org/whl/cu129
+
+numpy>=2.0
+opencv-python>=4.10
+
+# Face recognition (core/faces.py). The buffalo_l model (about 300 MB) downloads
+# itself on first use; it is licensed for non-commercial research only.
+# The [cuda,cudnn] extras bring the CUDA/cuDNN DLLs, so no separate CUDA install.
+onnxruntime-gpu[cuda,cudnn]>=1.21
+insightface==0.7.3
+
+# Person detection (core/personscan.py). Also needs the model file
+# data/models/person_yolov8m-seg.pt: see README.
+torch==2.8.0+cu129
+torchvision==0.23.0+cu129
+ultralytics>=8.3

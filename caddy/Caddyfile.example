@@ -1,0 +1,71 @@
+# HTTPS in front of VAM: a real Let's Encrypt certificate for vam.example.com,
+# validated through Cloudflare DNS, with no port open to the internet.
+#
+# Copy this file to caddy/Caddyfile (not tracked) and replace vam.example.com
+# with your own name. run-https.bat reads caddy/Caddyfile.
+#
+# How this ended up here (2026-09-15). The first version validated the
+# router's DDNS name over TLS-ALPN on port 443, and it could not work here:
+# the router's firewall passes inbound traffic only from a country allowlist,
+# and Let's Encrypt validates from abroad — every attempt timed out. Opening
+# 443 to the world for good (renewals need it too) would have undone that
+# rule. So the certificate is proven with a DNS record on our own domain:
+#
+# * `vam.example.com` resolves through Cloudflare, "DNS only". The router needs
+#   no port forward for the certificate at all.
+# * Caddy writes a temporary TXT record through the Cloudflare API to pass the
+#   DNS-01 challenge. The API token is scoped to this one zone (Zone:Read,
+#   DNS:Edit) and lives in data/caddy/cloudflare_token.txt, outside git;
+#   run-https.bat loads it into CF_API_TOKEN.
+#
+# The app's `lan_only` guard refuses public addresses unless it is turned off
+# for public mode, and Caddy passes the real client in X-Forwarded-For, so a
+# mistake on the router side fails closed rather than open.
+#
+# Port 80 is not used: no HTTP challenge, no redirect listener.
+
+{
+	auto_https disable_redirects
+	storage file_system {$VAM_CADDY_STORAGE}
+}
+
+vam.example.com {
+	tls {
+		dns cloudflare {env.CF_API_TOKEN}
+		# Ask Cloudflare's own resolvers whether the TXT record is visible,
+		# not whatever the router caches — a stale local answer would make
+		# Caddy wait on a record that is already there.
+		resolvers 1.1.1.1 1.0.0.1
+	}
+
+	# Browser hardening, added once the site was public.
+	# * HSTS: after one visit the browser refuses plain HTTP for this name, so
+	#   a network in between cannot downgrade it. No includeSubDomains/preload:
+	#   other names under the same domain are not ours to commit.
+	# * DENY framing: nothing embeds VAM, and a framed page is how a click on
+	#   someone else's site becomes a click on 刪除.
+	# * Server/Via removed: they only tell a scanner what to try. `defer` so
+	#   the removal happens after the proxy has added them.
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "same-origin"
+		-Server
+		-Via
+		defer
+	}
+
+	# flush_interval -1: pass video bytes through as they arrive. /api/stream
+	# answers in 4 MB range chunks and buffering them here would only add delay.
+	reverse_proxy 127.0.0.1:8301 {
+		flush_interval -1
+	}
+
+	log {
+		output file {$VAM_CADDY_ACCESS_LOG} {
+			roll_size 10MiB
+			roll_keep 5
+		}
+	}
+}

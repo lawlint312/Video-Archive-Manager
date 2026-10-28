@@ -1,0 +1,41 @@
+# ── never commit ────────────────────────────────────────────────────────────
+# vam.db holds password hashes and live session tokens; faces.db is 23 MB of
+# embeddings that are rebuilt by the indexer; the rest is cache.
+data/
+
+# This machine's own setup: domain, LAN/NAS addresses, router, full paths.
+# The tracked files use placeholders (vam.example.com, 192.168.1.x); the real
+# values live only here. CLAUDE.local.md is loaded by Claude Code next to
+# CLAUDE.md; caddy/Caddyfile is the live config, made from Caddyfile.example.
+CLAUDE.local.md
+local/
+caddy/Caddyfile
+
+# thumbnails — regenerated on demand, ~170 MB
+cache/
+
+# ── build output / dependencies ─────────────────────────────────────────────
+node_modules/
+dist/
+.vite/
+
+# ── python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Running a test from inside backend/ with a relative path creates this by
+# mistake; the real fixtures live in the top-level testdata/.
+backend/testdata/
+
+# ── editors / os ────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+*.swp
+
+# Caddy build with the Cloudflare DNS module, downloaded from caddyserver.com
+tools/caddy/
