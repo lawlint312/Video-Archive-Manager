@@ -62,6 +62,8 @@ VAM 以 **「角色（Person）」** 為主要的資料整理核心。
   </tr>
 </table>
 
+<p align="center"><img src="screenshots/player.jpg" alt="播放器：片名與備忘直接在播放時編輯" width="800"></p>
+
 ## 🖼️ 照片管理
 
 - 每位角色獨立的照片牆，可依時間、名稱、檔案大小、**相似度**（構圖＋顏色）排序，也能用相簿方式瀏覽。
@@ -90,7 +92,7 @@ VAM 以 **「角色（Person）」** 為主要的資料整理核心。
 - **角色管理**：改名、合併角色資料夾、自訂標籤（可直接用來篩選）、社群連結、個人資料、大頭照框選。
 - **NFO**：讀入與寫出 Kodi／Jellyfin／Emby 的 `.nfo`，讀入時只補空的欄位，不覆蓋你改過的。
 
-<p align="center"><img src="screenshots/inbox.jpg" alt="待分類：新下載的影片先放這裡，確認後再歸檔" width="800"></p>
+<p align="center"><img src="screenshots/archive.jpg" alt="待分類：點一部影片，在下方預覽、選角色、歸檔" width="800"></p>
 
 ---
 
@@ -123,7 +125,7 @@ VAM 以 **「角色（Person）」** 為主要的資料整理核心。
 - **壓縮**：重新編碼換取空間，**一律另存新檔**；可以把原始版本與壓縮版本並排同步播放，比較畫質後再決定留哪個。
 - **✂️ 剪輯**：一次選多個片段並合併成一支影片；先從縮圖表選大致範圍，再用播放器微調。可選「快速（吸附關鍵幀、不損失畫質）」或「精準到格（重新編碼）」。
 
-<p align="center"><img src="screenshots/player.jpg" alt="播放器：片名與備忘直接在播放時編輯" width="800"></p>
+<p align="center"><img src="screenshots/clip.jpg" alt="剪輯：選好多個片段，接成一支影片" width="800"></p>
 
 ---
 

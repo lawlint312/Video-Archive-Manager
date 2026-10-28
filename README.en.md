@@ -64,6 +64,8 @@ New downloads land in an **inbox** (待分類) first. Once you have checked them
   </tr>
 </table>
 
+<p align="center"><img src="screenshots/player.jpg" alt="Player: edit the title and notes while watching" width="800"></p>
+
 ## 🖼️ Photos
 
 - A photo wall for each person, sorted by date, name, file size or **visual similarity** (composition and colour), with an album view as well.
@@ -92,7 +94,7 @@ New downloads land in an **inbox** (待分類) first. Once you have checked them
 - **Managing people**: rename, merge two people's folders, custom tags (usable as filters), social links, profile details, and framing the avatar.
 - **NFO**: reads and writes Kodi / Jellyfin / Emby `.nfo` files. Reading only fills empty fields and never overwrites what you have edited.
 
-<p align="center"><img src="screenshots/inbox.jpg" alt="Inbox: new videos wait here until they are filed" width="800"></p>
+<p align="center"><img src="screenshots/archive.jpg" alt="Inbox: click a video to preview it below, pick a person and file it" width="800"></p>
 
 ---
 
@@ -125,7 +127,7 @@ Every tool that changes a video **verifies** the result: if verification fails, 
 - **Shrink**: re-encodes to save space, **always to a new file**. You can play the original and the smaller version side by side, in sync, and compare quality before deciding which to keep.
 - **✂️ Clip**: select several segments and join them into one video. Pick rough ranges on the contact sheet, then fine-tune in the player. Choose "fast" (snaps to keyframes, no quality loss) or "frame-accurate" (re-encodes).
 
-<p align="center"><img src="screenshots/player.jpg" alt="Player: edit the title and notes while watching" width="800"></p>
+<p align="center"><img src="screenshots/clip.jpg" alt="Clipping: pick several segments and join them into one video" width="800"></p>
 
 ---
 
