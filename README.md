@@ -2,6 +2,8 @@
   <img src="frontend/public/brand-lockup.png" alt="Video Archive Manager" width="320">
 </p>
 
+<p align="center"><b>繁體中文</b> ｜ <a href="#english">English</a></p>
+
 # Video Archive Manager（VAM）
 
 VAM 是一套自行架設（Self-hosted）的影片與照片收藏管理系統，專門用來管理大量、分散於本機硬碟與 NAS 的影音收藏。
@@ -270,6 +272,45 @@ node tests\mount.test.mjs
 VAM 將影片瀏覽、角色管理、照片管理、重複掃描、人臉辨識、人物偵測、影片轉檔、壓縮、剪輯與外部資料匯入整合在同一套 Web 系統中。
 
 > **讓管理大量影音收藏，從繁瑣的檔案整理工作，變成可以透過瀏覽器快速完成的日常流程。**
+
+---
+
+## English
+
+VAM (Video Archive Manager) is a self-hosted manager for large video and photo collections spread across local drives and a NAS. It runs in the browser, so it works on desktop, phone and tablet without installing any client.
+
+Tested at **30,000+ videos, 730 people and 160,000+ photos** across 8 local drives and a NAS.
+
+> **The interface is in Traditional Chinese only for now.** VAM manages your own files; it contains and provides no media.
+
+Everything is organised around **people**: each person is a folder holding their videos, photos and a `person_info.json` with their profile, tags and links. The profile lives next to the files, so moving the folder moves the data. New downloads land in an **inbox** and are filed to a person once reviewed; watch history and titles follow the files.
+
+- **Browse and watch**: custom categories and card shapes, sorting and filters (unwatched, favourites), library-wide filename and product-code search, contact sheets, Kodi/Jellyfin-style `-poster.jpg`/`-fanart.jpg` covers, a player with external and bilingual subtitles, watch history and notes.
+- **Photos**: per-person photo walls sorted by date, size or visual similarity; album view; swipe and pinch-zoom on phones.
+- **Organise**: inbox workflow, rename and merge people, tags and links, read and write `.nfo` files (Kodi, Jellyfin, Emby).
+- **Duplicate scans** for videos (hash, then duration and frame fingerprints) and images (hash, then perceptual hash); stoppable and resumed after a restart; nothing is deleted without a confirmed list.
+- **Video tools**, all verified before the original is removed: convert (remux first, re-encode only when needed), repair, full decode check, re-encode to save space (always to a new file, with a side-by-side comparison), and multi-segment clipping.
+- **Metadata**: titles and release dates from DMM's public catalogue, covers, profiles from JAVDatabase, avatars from [Gfriends](https://github.com/gfriends/gfriends), and imports from saved Seesaa Wiki, IAFD and AVBase pages.
+- **Optional AI**: face recognition that suggests who appears in inbox videos (NVIDIA GPU), and person detection that finds photos with nobody in them (GPU optional).
+- **Accounts and security**: custom permission groups enforced on the server, per-account folder access, TOTP two-factor (required for accounts that can edit), login throttling, alerts for sign-ins from new addresses, daily database backups.
+
+**Install** (Windows 10/11; the backend is Python and may run elsewhere, untested). Python 3.11+, FFmpeg on the PATH, and Node.js to build the web interface once:
+
+```bat
+git clone https://github.com/lawlint312/Video-Archive-Manager.git
+cd Video-Archive-Manager
+pip install -r backend/requirements.txt Pillow
+cd frontend
+npm install
+npm run build
+cd ..
+set VAM_ADMIN_PASSWORD=your-password
+start.bat
+```
+
+Then open **http://localhost:8301/**, sign in as `admin`, and add your library and inbox folders under Settings. The AI features are installed separately with `backend/requirements-ai.txt` (about 10 GB, see 「AI 功能」 above). The insightface `buffalo_l` model is licensed for non-commercial research only.
+
+Licensed under AGPL-3.0.
 
 ---
 
