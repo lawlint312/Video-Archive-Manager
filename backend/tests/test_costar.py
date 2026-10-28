@@ -159,6 +159,9 @@ def test_over_http(tmp: Path):
         cast = {x["name"]: x for x in d["cast"]}
         check(cast["CoStar"]["marked"] and not cast["誰都不是"]["marked"],
               "標過的在演出那行打勾")
+        check(cast["CoStar"]["chip"] == 0 and cast["LeadName"]["chip"] == -1
+              and cast["誰都不是"]["chip"] == -1,
+              "演出一行：標過的指向它的共演標籤，同一個人只出現一次")
 
         v = c.get(f"/api/costar/videos?root={co}").json()
         got = sorted(Path(x["path"]).name for x in v["videos"])
@@ -223,6 +226,8 @@ def test_over_http(tmp: Path):
         check([(x["name"], x["kind"]) for x in d["costars"]]
               == [("CoStar", "folder"), ("Yoko", "name")],
               f"建了資料夾、名字成了她的別名：自動顯示成那位角色（{d['costars']}）")
+        check([x["chip"] for x in d["cast"]] == [-1, 0, -1],
+              f"名單上沒有的横田夏美不佔名單的位置，接在後面（{d['cast']}）")
         v = c.get(f"/api/costar/videos?root={yoko}").json()
         check(sorted(Path(x["path"]).name for x in v["videos"]) == ["ABC-123.mkv", "ABC-123.mp4"],
               "而且她的共演清單裡有這部片")

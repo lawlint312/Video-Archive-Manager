@@ -477,9 +477,9 @@ const canInfo = computed(() => store.editMode && can('edit_info'))
 // ── co-stars (共演) ─────────────────────────────────────────────────────────
 // Who else is in the video playing. Marked here, listed under 「共演」 on
 // their own page. A co-star with no character folder is kept by name and
-// links up by itself once a folder (or an alias) for that name exists. Below
-// it, the film's whole cast from the stored lists (wiki / AVBase import,
-// javdatabase), each one a click away from being marked.
+// links up by itself once a folder (or an alias) for that name exists. Shown
+// in one 演出 row with the film's whole cast from the stored lists (wiki /
+// AVBase import, javdatabase), each one a click away from being marked.
 const costars = ref([])          // [{ folder, name, kind: 'folder'|'name', typed? }]
 const cast = ref([])             // [{ name, folder, char, lead, marked }]
 const costarInput = ref('')
@@ -544,6 +544,22 @@ function addName(n) {
 function removeCostar(c) {
   saveCostars(costars.value.filter(x => !sameChip(x, c)))
 }
+
+// The player's one 演出 row: the cast in order, a marked member carrying her
+// chip (`chip` is the server's index into `costars`), then the chips no cast
+// list names. Marked twice used to mean listed twice.
+const castLine = computed(() => {
+  const used = new Set()
+  const line = cast.value.map(c => {
+    const chip = c.chip >= 0 ? costars.value[c.chip] : null
+    if (chip) used.add(c.chip)
+    return { ...c, chip, key: 'c:' + c.name }
+  })
+  costars.value.forEach((x, i) => {
+    if (!used.has(i)) line.push({ name: x.name, chip: x, key: x.kind + ':' + (x.typed || x.folder) })
+  })
+  return line
+})
 
 // one name from the cast line: the character it matches, else the name itself
 function addFromCast(c) {
@@ -1178,39 +1194,38 @@ watch(() => store.filesVersion, load)
             <Icon name="heart" :size="17" />
           </button>
         </div>
-        <div v-if="!screen.mobile && (costars.length || canInfo)"
+        <!-- One row: the film's whole cast as the stored lists name it, each
+             person once — the lead grey, a marked co-star as a chip in her
+             place, the rest a click away — then the marks no list names, and
+             the box. A film with no list is just the chips and the box. -->
+        <div v-if="!screen.mobile && (cast.length || costars.length || canInfo)"
              class="noterow corow">
-          <span class="nlab ib"><Icon name="user" :size="13" /> 共演</span>
+          <span class="nlab ib"><Icon name="user" :size="13" /> 演出</span>
           <span class="cochips">
-            <!-- A name with no folder is dashed: it is kept, searchable, and
-                 becomes the character by itself once a folder or alias exists. -->
-            <span v-for="c in costars" :key="c.kind + (c.typed || c.folder)" class="cochip"
-                  :class="{ nm: !c.folder }"
-                  :title="!c.folder ? '沒有角色資料夾，只記名字；之後建了資料夾或加成別名會自動接上'
-                          : c.typed && c.typed !== c.name ? `以「${c.typed}」標記` : ''">{{ c.name }}
-              <button v-if="canInfo" class="cox" title="移除"
-                      @click="removeCostar(c)"><Icon name="close" :size="10" /></button>
-            </span>
+            <template v-for="c in castLine" :key="c.key">
+              <span v-if="c.lead" class="castname lead" title="主角">{{ c.name }}<span
+                    v-if="c.char && c.char !== c.name" class="castchar">（{{ c.char }}）</span></span>
+              <!-- A name with no folder is dashed: it is kept, searchable, and
+                   becomes the character by itself once a folder or alias exists. -->
+              <span v-else-if="c.chip" class="cochip" :class="{ nm: !c.chip.folder }"
+                    :title="!c.chip.folder ? '共演；沒有角色資料夾，只記名字，之後建了資料夾或加成別名會自動接上'
+                            : c.chip.typed && c.chip.typed !== c.chip.name ? `共演，以「${c.chip.typed}」標記`
+                            : '共演'">{{ c.name }}<span v-if="c.char && c.char !== c.name"
+                      class="castchar">（{{ c.char }}）</span>
+                <button v-if="canInfo" class="cox" title="移除共演"
+                        @click="removeCostar(c.chip)"><Icon name="close" :size="10" /></button>
+              </span>
+              <button v-else-if="canInfo && !c.marked" class="castname add"
+                      :title="c.folder ? `加入共演：${c.char}` : '加入共演（沒有角色資料夾，只記名字）'"
+                      @click="addFromCast(c)">＋ {{ c.name }}<span v-if="c.char && c.char !== c.name"
+                        class="castchar">（{{ c.char }}）</span></button>
+              <span v-else class="castname">{{ c.name }}</span>
+            </template>
             <input v-if="canInfo" v-model="costarInput" class="coin"
                    list="vam-costar-chars" placeholder="輸入角色名或演員名加入…"
                    @change="addTyped" @keydown.enter.prevent="addTyped" />
           </span>
-          <span class="thint">{{ playing.video_id ? '套用到所有同番號的檔案' : '只套用這個檔案' }}</span>
-        </div>
-        <!-- The film's whole cast as the stored lists name it, folder or not. -->
-        <div v-if="!screen.mobile && cast.length" class="noterow corow castrow">
-          <span class="nlab ib"><Icon name="film" :size="13" /> 演出</span>
-          <span class="cochips">
-            <template v-for="c in cast" :key="c.name">
-              <button v-if="canInfo && !c.lead && !c.marked" class="castname add"
-                      :title="c.folder ? `加入共演：${c.char}` : '加入共演（沒有角色資料夾，只記名字）'"
-                      @click="addFromCast(c)">＋ {{ c.name }}<span v-if="c.char && c.char !== c.name"
-                        class="castchar">（{{ c.char }}）</span></button>
-              <span v-else class="castname" :class="{ lead: c.lead, done: c.marked }"
-                    :title="c.lead ? '主角' : c.marked ? '已標為共演' : ''">{{ c.name }}<span
-                    v-if="c.char && c.char !== c.name" class="castchar">（{{ c.char }}）</span></span>
-            </template>
-          </span>
+          <span v-if="canInfo" class="thint">{{ playing.video_id ? '套用到所有同番號的檔案' : '只套用這個檔案' }}</span>
         </div>
         <!-- How this film relates to others (AVBase): one you have plays, one
              you do not copies its number. -->
@@ -1491,13 +1506,12 @@ watch(() => store.filesVersion, load)
 .cochip button { background: none; border: none; color: var(--dim); cursor: pointer;
   padding: 0 3px; line-height: 0; }
 .cochip button:hover { color: var(--text); }
-/* the whole cast, below: plain text, the unmarked ones clickable */
+/* the rest of the cast in the same row: plain text, the unmarked ones clickable */
 .castname { font-size: 12px; color: var(--dim); background: none; border: none;
   padding: 1px 4px; border-radius: 10px; }
 .castname.add { color: var(--accent); cursor: pointer; }
 .castname.add:hover { background: #ffffff10; }
-.castname.lead, .castname.done { color: #6c6c80; }
-.castname.done::after { content: ' ✓'; }
+.castname.lead { color: #6c6c80; }
 .castchar { color: var(--dim); font-size: 11px; }
 /* 收錄: one line per related film, the whole line readable at a glance */
 .relrow { align-items: flex-start; }

@@ -2818,13 +2818,14 @@ def _lead_keys(lead: Optional[dict]) -> set:
 
 
 def _costar_view(p: Path, chars: list, user: dict) -> dict:
-    """Everything the player's 共演 row shows for one video.
+    """Everything the player's 演出 row shows for one video.
 
     `costars`: folder marks, then name marks — a name that now matches a
     folder or an alias shows as that character (it links up by itself once
     the folder exists). `cast`: the film's whole cast as the stored lists
-    name it, each with whether it is the lead, already marked, or which
-    character it would be.
+    name it, each with whether it is the lead, which character it would be,
+    and `chip`, the index of its mark in `costars` (-1 when not marked) —
+    the row shows each person once, the marks no list names after them.
     """
     marked = costar.for_video(p)
     names = costar.names_for(p)
@@ -2849,6 +2850,17 @@ def _costar_view(p: Path, chars: list, user: dict) -> dict:
             out.append({"folder": "", "name": n, "kind": "name", "typed": n})
     marked_norms = {norm(c["typed"]) for c in out if c.get("typed")}
 
+    def chip_of(c, person) -> int:
+        """Which `out` entry is this cast member, -1 for none: the player
+        shows one row, a marked member as its chip in the cast's place."""
+        keys = _lead_keys(c)
+        norms = {norm(x) for x in person}
+        for i, o in enumerate(out):
+            if (o["folder"] and costar.folder_key(o["folder"]) in keys) or \
+                    (not o["folder"] and norm(o["typed"]) in norms):
+                return i
+        return -1
+
     rows, seen = [], set()
     for person in cast:
         n = person[0]
@@ -2859,10 +2871,12 @@ def _costar_view(p: Path, chars: list, user: dict) -> dict:
             continue
         seen.add(key)
         fk = key[1] if c else ""
+        lead_here = bool(c and fk in lead_keys)
+        chip = -1 if lead_here else chip_of(c, person)
         rows.append({"name": n, "folder": c["path"] if c else "",
                      "char": c["name"] if c else "",
-                     "lead": bool(c and fk in lead_keys),
-                     "marked": bool((c and fk in shown)
+                     "lead": lead_here, "chip": chip,
+                     "marked": bool(chip >= 0 or (c and fk in shown)
                                     or any(norm(x) in marked_norms for x in person))})
     return {"costars": out, "cast": rows, "key": costar.video_key(p),
             "cast_source": cast_source}
