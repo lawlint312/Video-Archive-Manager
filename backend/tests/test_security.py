@@ -496,6 +496,61 @@ def test_weak_password_forces_a_change():
     check(not c.get("/api/auth/me").json().get("must_change_pw"), "旗標已清掉")
 
 
+def test_generated_admin_password_must_be_changed():
+    print("\n首次啟動自動產生的管理員密碼：寫在日誌裡，所以第一次登入就要換掉")
+    import logging, os, tempfile
+    td = tempfile.mkdtemp(prefix="genpw_")
+    os.environ["VAM_DATA_DIR"] = os.path.join(td, "data")
+    os.environ["VAM_CACHE_DIR"] = os.path.join(td, "cache")
+    for m in [k for k in list(sys.modules) if k.startswith("app")]:
+        del sys.modules[m]
+    from fastapi.testclient import TestClient
+    from app import auth, db, main
+    db.init_db()
+
+    lines = []
+    h = logging.Handler()
+    h.emit = lambda rec: lines.append(rec.getMessage())
+    main.log.addHandler(h)
+    try:
+        main._seed_admin(password="")
+    finally:
+        main.log.removeHandler(h)
+    pw = next((ln.split("password:", 1)[1].strip() for ln in lines if "password:" in ln), "")
+    check(len(pw) >= 12 and security.password_problem(pw, "admin") is None,
+          "密碼照舊印在日誌裡，而且本身夠強")
+
+    c = TestClient(main.app, client=("192.168.1.32", 5555))
+    r = c.post("/api/auth/login", json={"username": "admin", "password": pw})
+    check(r.status_code == 200 and r.json().get("must_change_pw"),
+          f"夠強也一樣要改：強弱檢查不會把旗標清掉（{r.status_code}）")
+    check(c.get("/api/auth/me").json().get("pw_problem") == auth.GENERATED_PW,
+          "說明原因：密碼在日誌裡")
+    check(c.get("/api/characters").status_code == 403, "改之前其他端點都擋下")
+    r = c.post("/api/auth/login", json={"username": "admin", "password": pw})
+    check(r.json().get("must_change_pw"), "再登入一次也還在")
+
+    r = c.post("/api/auth/password", json={"current_password": pw,
+                                           "new_password": "Str0ngPass99"})
+    check(r.status_code == 200, "改密碼")
+    r = c.post("/api/auth/login", json={"username": "admin", "password": "Str0ngPass99"})
+    check(not r.json().get("must_change_pw"), "改完就清掉")
+
+    # the admin setting a password from the user page counts as a change too
+    uid = auth.get_user_by_name("admin")["id"]
+    auth.set_must_change(uid, auth.GENERATED_PW)
+    main.app.dependency_overrides[auth.require_admin] = lambda: auth.get_user_by_id(uid)
+    try:
+        r = c.patch(f"/api/users/{uid}", json={"password": "An0therPass77"})
+    finally:
+        main.app.dependency_overrides.clear()
+    check(r.status_code == 200 and not auth.get_user_by_id(uid)["must_change_pw"],
+          f"從帳號管理設新密碼也算換掉了（{r.status_code}）")
+
+    main._seed_admin(password="")
+    check(auth.count_users() == 1, "已經有帳號時不會再建")
+
+
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")
     for fn in (test_password_policy, test_throttle, test_success_clears_the_slate,
@@ -507,7 +562,8 @@ if __name__ == "__main__":
                test_change_own_password, test_public_hardening,
                test_disabled_account, test_spraying_one_address_many_accounts,
                test_one_account_from_many_addresses_is_slowed_not_locked,
-               test_weak_password_check, test_weak_password_forces_a_change):
+               test_weak_password_check, test_weak_password_forces_a_change,
+               test_generated_admin_password_must_be_changed):
         fn()
     print("\n" + (f"{len(FAIL)} 項失敗" if FAIL else "全部通過"))
     sys.exit(1 if FAIL else 0)

@@ -301,18 +301,37 @@ def _startup():
     else:
         log.info("MP4Box 找不到 —— 影格時序修復停用。"
                  "安裝方式：winget install GPAC.GPAC")
+    _seed_admin()
+
+
+def _seed_admin(password: Optional[str] = None) -> None:
+    """The first admin, on a database with no accounts yet. `password` stands
+    in for VAM_ADMIN_PASSWORD (tests; "" means none); none means one is made up."""
     if auth.count_users() == 0:
-        pw = INIT_ADMIN_PASSWORD or secrets.token_urlsafe(12)
-        auth.create_user(INIT_ADMIN_USER, pw, role="admin")
-        if INIT_ADMIN_PASSWORD:
+        given = password if password is not None else INIT_ADMIN_PASSWORD
+        pw = given
+        while not pw:
+            # About one random token in fourteen (145 of 2,000) lacks a digit
+            # or a case, and then the sign-in check reports *that* instead of
+            # why it must be changed.
+            pw = secrets.token_urlsafe(12)
+            if security.password_problem(pw, INIT_ADMIN_USER):
+                pw = ""
+        uid = auth.create_user(INIT_ADMIN_USER, pw, role="admin")
+        if given:
             log.info("Created initial admin '%s' (password from env).",
                      INIT_ADMIN_USER)
         else:
+            # The log is the only way to hand this password over (the server
+            # usually runs without a window), and the log file keeps it. So it
+            # has to be replaced on first sign-in; see auth.GENERATED_PW.
+            auth.set_must_change(uid, auth.GENERATED_PW)
             log.warning("=" * 56)
             log.warning(" Created initial admin account:")
             log.warning("   username: %s", INIT_ADMIN_USER)
             log.warning("   password: %s", pw)
-            log.warning(" (set VAM_ADMIN_PASSWORD to choose your own)")
+            log.warning(" (must be changed at first sign-in;")
+            log.warning("  set VAM_ADMIN_PASSWORD to choose your own)")
             log.warning("=" * 56)
 
 
@@ -459,6 +478,9 @@ def login(body: LoginBody, request: Request, response: Response):
     # account may predate. Sign-in still succeeds — the session is then good
     # for changing the password and nothing else (see auth.current_user).
     weak = security.weak_existing(body.password, body.username)
+    if not weak and user.get("pw_problem") == auth.GENERATED_PW:
+        # strong, but written in the server log: kept until it is replaced
+        weak = auth.GENERATED_PW
 
     if user.get("totp_secret"):
         # No cookie yet. For this account the password alone is not a sign-in,
@@ -1075,6 +1097,8 @@ def edit_user(uid: int, body: EditUserBody, request: Request,
                      f"兩步驟驗證被 {admin['username']} 重設")
     auth.update_user(uid, role=body.role, password=body.password,
                      disabled=body.disabled, **kw)
+    if body.password is not None and target.get("pw_problem") == auth.GENERATED_PW:
+        auth.set_must_change(uid, None)    # no longer the one in the log
     return {"ok": True, **auth.public_user(**auth.get_user_by_id(uid))}
 
 
@@ -5321,12 +5345,24 @@ def own_job(job_id: str, user: dict = Depends(auth.current_user)):
 
 # ── archive workflow (editor only) ───────────────────────────────────────────
 
+def _bad_folder_name(name: str) -> bool:
+    """A character name that is not one folder directly under its root.
+
+    The separators are the obvious half. The other is a name of nothing but
+    dots and spaces: `..` is the parent, and Windows trims trailing dots and
+    spaces, so `...` is the root itself. `root / ".."` passed the separator
+    check and filed into the folder *above* the archive root, outside every
+    allowed root (CodeQL, 2026-10-28)."""
+    return (not name or any(ch in name for ch in '\\/:*?"<>|')
+            or not name.strip(". "))
+
+
 def _resolve_person_dir(person: str, root: Optional[str], user: dict) -> Path:
     """Folder for `person`: existing character folder, else create under a root."""
     person = person.strip()
     if not person:
         raise HTTPException(status_code=400, detail="person name required")
-    if any(ch in person for ch in '\\/:*?"<>|'):
+    if _bad_folder_name(person):
         raise HTTPException(status_code=400, detail="invalid characters in name")
 
     for c in media.list_characters(app_settings.archive_roots_for(user)):
@@ -5465,7 +5501,7 @@ def archive_folder(body: FolderArchiveBody,
     if not is_allowed(root, user):
         raise HTTPException(status_code=400, detail="root not allowed")
     person = body.person.strip()
-    if not person or any(ch in person for ch in '\\/:*?"<>|'):
+    if _bad_folder_name(person):
         raise HTTPException(status_code=400, detail="invalid character name")
     dst = root / person
     if dst.resolve() == src.resolve():
@@ -5565,7 +5601,7 @@ def rename_character(body: RenameBody, user: dict = Depends(auth.require_perm("r
     if not is_allowed(folder, user) or not folder.is_dir():
         raise HTTPException(status_code=403, detail="folder not allowed")
     new_name = body.new_name.strip()
-    if not new_name or any(ch in new_name for ch in '\\/:*?"<>|'):
+    if _bad_folder_name(new_name):
         raise HTTPException(status_code=400, detail="invalid folder name")
     target = folder.parent / new_name
     if target.exists():
@@ -5629,15 +5665,48 @@ class MergeRunBody(BaseModel):
     plan: list
 
 
+def _merge_plan_problem(plan: list, src: Path, dst: Path) -> Optional[str]:
+    """Why a plan sent back by the browser is not one `merge_plan` could have
+    made, or None.
+
+    The plan comes from the client, and `run_merge` moves, overwrites and
+    deletes exactly what it says. Checking only that each source was *allowed*
+    let a forged plan move a file anywhere on the disk, write person_info.json
+    over any path, and delete any allowed file without the delete permission
+    (CodeQL, 2026-10-28). So: every source inside `src`, every destination
+    inside `dst`, and only the four actions the planner makes.
+    """
+    try:
+        sroot, droot = src.resolve(), dst.resolve()
+    except OSError as e:
+        return str(e)
+    for item in plan:
+        if not isinstance(item, dict):
+            return "not an entry"
+        action, s, d = item.get("action"), item.get("src"), item.get("dst")
+        if action not in ("move", "rename", "delete", "merge_info"):
+            return f"unknown action {action!r}"
+        sp = Path(str(s or ""))
+        if not s or not _under(sp, sroot) or sp.resolve() == sroot:
+            return str(s)
+        if action == "delete":
+            continue
+        dp = Path(str(d or ""))
+        if not d or not _under(dp, droot) or dp.resolve() == droot:
+            return str(d)
+        if action == "merge_info" and not (sp.name == dp.name == dedup.PERSON_INFO):
+            return str(d)
+    return None
+
+
 @app.post("/api/character/merge")
 def merge_run(body: MergeRunBody, user: dict = Depends(auth.require_perm("rename_merge"))):
     src, dst = Path(body.src), Path(body.dst)
     if not (is_allowed(src, user) and is_allowed(dst, user)):
         raise HTTPException(status_code=403, detail="folder not allowed")
-    # every path in the plan must stay inside the two approved folders
-    for item in body.plan:
-        if not is_allowed(Path(item["src"]), user):
-            raise HTTPException(status_code=403, detail="plan contains a bad path")
+    bad = _merge_plan_problem(body.plan, src, dst)
+    if bad:
+        raise HTTPException(status_code=403, detail=f"plan contains a bad path: {bad}")
 
     def _task(progress):
         res = dedup.run_merge(body.plan, src, dst, progress=progress)

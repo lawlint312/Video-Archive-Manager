@@ -207,6 +207,13 @@ def set_totp(uid: int, secret=_UNSET, pending=_UNSET, last=_UNSET,
         conn.close()
 
 
+# The reason given for the first admin's password when the server made it up
+# (no VAM_ADMIN_PASSWORD). It is strong, so the sign-in check would clear the
+# flag at once; sign-in keeps it while this is the stored reason, and only
+# changing the password clears it.
+GENERATED_PW = "這是第一次啟動時自動產生的密碼，已經寫在伺服器的日誌檔裡，請換一個新密碼"
+
+
 def set_must_change(uid: int, problem: Optional[str]):
     """Flag (or clear) "this account has to pick a new password first".
 
