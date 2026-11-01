@@ -2,7 +2,7 @@
   <img src="frontend/public/brand-lockup.png" alt="Video Archive Manager" width="320">
 </p>
 
-<p align="center"><b>繁體中文</b> ｜ <a href="README.en.md">English</a></p>
+<p align="center"><b>繁體中文</b> ｜ <a href="README.zh-CN.md">简体中文</a> ｜ <a href="README.en.md">English</a></p>
 
 # Video Archive Manager（VAM）
 
