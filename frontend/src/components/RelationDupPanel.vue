@@ -22,6 +22,7 @@ import { releaseFile } from '../player'
 import VideoPlayer from './VideoPlayer.vue'
 import Icon from './Icon.vue'
 import { t } from '../i18n'
+import { ts } from '../serverstrings.js'
 
 const groups = ref(null)
 const stored = ref(0)            // relations on record at all
@@ -146,7 +147,7 @@ async function closePlayer() {
           <template v-for="f in g.files" :key="f.path">
             <div class="row" :class="rowClass(g, f)">
               <span class="role" :class="f.role">{{ f.role === 'parent' ? t('原片') : t('被包含') }}</span>
-              <span class="where" :title="f.label">{{ f.label }}</span>
+              <span class="where" :title="ts(f.label)">{{ ts(f.label) }}</span>
               <span class="fn" :title="f.path">{{ f.name }}</span>
               <span class="col">{{ fmtDur(f.duration) }}</span>
               <span class="col">{{ f.width ? `${f.width}×${f.height}` : '?' }}</span>

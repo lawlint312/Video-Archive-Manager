@@ -19,9 +19,9 @@ VAM 是一套自托管（Self-hosted）的视频与照片收藏管理系统，�
 
 > VAM 只管理你自己的文件，**不包含、也不提供任何影音内容**。
 >
-> 界面有**繁体中文、简体中文、English** 三种语言，每个账号在右上角的账号菜单中各自选择。本页截图为繁体中文界面。
+> 界面有**繁体中文、简体中文、English** 三种语言，每个账号在右上角的账号菜单中各自选择。
 
-<p align="center"><img src="screenshots/home.jpg" alt="主页：按分类显示角色，每个分类可以有不同的卡片形状" width="900"></p>
+<p align="center"><img src="screenshots/zh-CN/home.jpg" alt="主页：按分类显示角色，每个分类可以有不同的卡片形状" width="900"></p>
 
 <sub>本页截图均来自演示数据库：人物与照片都是 AI 生成的虚构角色。</sub>
 
@@ -55,8 +55,8 @@ VAM 以 **“角色（Person）”** 为主要的数据整理核心。
 
 <table>
   <tr>
-    <td width="50%"><img src="screenshots/character-videos.jpg" alt="角色的视频列表"></td>
-    <td width="50%"><img src="screenshots/contact-sheet.jpg" alt="缩略图表"></td>
+    <td width="50%"><img src="screenshots/zh-CN/character-videos.jpg" alt="角色的视频列表"></td>
+    <td width="50%"><img src="screenshots/zh-CN/contact-sheet.jpg" alt="缩略图表"></td>
   </tr>
   <tr>
     <td align="center">角色的视频：封面、看过与收藏标记、筛选与排序</td>
@@ -64,7 +64,7 @@ VAM 以 **“角色（Person）”** 为主要的数据整理核心。
   </tr>
 </table>
 
-<p align="center"><img src="screenshots/player.jpg" alt="播放器：片名与备注在播放时直接编辑" width="800"></p>
+<p align="center"><img src="screenshots/zh-CN/player.jpg" alt="播放器：片名与备注在播放时直接编辑" width="800"></p>
 
 ## 照片管理
 
@@ -74,9 +74,9 @@ VAM 以 **“角色（Person）”** 为主要的数据整理核心。
 
 <table>
   <tr>
-    <td width="40%"><img src="screenshots/character-profile.jpg" alt="角色的个人资料与照片墙"></td>
-    <td width="40%"><img src="screenshots/albums.jpg" alt="按子文件夹分成相册"></td>
-    <td width="20%"><img src="screenshots/mobile.jpg" alt="手机版"></td>
+    <td width="40%"><img src="screenshots/zh-CN/character-profile.jpg" alt="角色的个人资料与照片墙"></td>
+    <td width="40%"><img src="screenshots/zh-CN/albums.jpg" alt="按子文件夹分成相册"></td>
+    <td width="20%"><img src="screenshots/zh-CN/mobile.jpg" alt="手机版"></td>
   </tr>
   <tr>
     <td align="center">个人资料、社交链接与照片墙</td>
@@ -94,7 +94,7 @@ VAM 以 **“角色（Person）”** 为主要的数据整理核心。
 - **角色管理**：改名、合并角色文件夹、自定义标签（可直接用来筛选）、社交链接、个人资料、头像框选。
 - **NFO**：读入与写出 Kodi／Jellyfin／Emby 的 `.nfo`，读入时只补空的字段，不覆盖你改过的内容。
 
-<p align="center"><img src="screenshots/archive.jpg" alt="待分类：点一个视频，在下方预览、选择角色、归档" width="800"></p>
+<p align="center"><img src="screenshots/zh-CN/archive.jpg" alt="待分类：点一个视频，在下方预览、选择角色、归档" width="800"></p>
 
 ---
 
@@ -104,7 +104,7 @@ VAM 以 **“角色（Person）”** 为主要的数据整理核心。
 - **图片**：比对完全相同与高度相似的照片，能识别带水印的版本。
 - 扫描可以中途停止，服务器重启后自动接续；删除前都会先列出清单让你确认。
 
-<p align="center"><img src="screenshots/duplicates.jpg" alt="重复扫描结果：完全相同的文件，以及不同画质的同一部视频" width="800"></p>
+<p align="center"><img src="screenshots/zh-CN/duplicates.jpg" alt="重复扫描结果：完全相同的文件，以及不同画质的同一部视频" width="800"></p>
 
 ---
 
@@ -127,7 +127,7 @@ VAM 以 **“角色（Person）”** 为主要的数据整理核心。
 - **压缩**：重新编码以节省空间，**一律另存为新文件**；可以把原始版本与压缩版本并排同步播放，比较画质后再决定保留哪个。
 - **剪辑**：一次选择多个片段并合并成一个视频；先从缩略图表选择大致范围，再用播放器微调。可选“快速（吸附关键帧、不损失画质）”或“精确到帧（重新编码）”。
 
-<p align="center"><img src="screenshots/clip.jpg" alt="剪辑：选好多个片段，接成一个视频" width="800"></p>
+<p align="center"><img src="screenshots/zh-CN/clip.jpg" alt="剪辑：选好多个片段，接成一个视频" width="800"></p>
 
 ---
 
@@ -154,7 +154,7 @@ VAM 以 **“角色（Person）”** 为主要的数据整理核心。
 - **备份**：每天把数据库备份到你指定的另一块硬盘。
 - **界面语言**：繁体中文、简体中文、English。每个账号各自选择，保存在账号里，换一台设备登录也一样；登录页面使用这台浏览器上次用的语言。
 
-<p align="center"><img src="screenshots/permissions.jpg" alt="权限组：逐项勾选每一组能用的功能" width="800"></p>
+<p align="center"><img src="screenshots/zh-CN/permissions.jpg" alt="权限组：逐项勾选每一组能用的功能" width="800"></p>
 
 ---
 

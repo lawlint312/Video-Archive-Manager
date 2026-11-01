@@ -51,6 +51,8 @@ export const FIXED = [
   N_('壓縮掃描'), N_('重複掃描'), N_('圖片重複掃描'), N_('人臉索引'), N_('轉檔掃描'),
   N_('含 MP4'), N_('檢查影格時序'), N_('完整解碼檢查'), N_('檢查錄影中斷'),
   N_('全部重新檢查'),
+  // main.py: where a duplicate lives (歸檔/<person> is a template below)
+  N_('待分類'),
 
   // ── error messages (HTTPException details and raised errors) ──
   // auth.py, security.py
@@ -144,6 +146,7 @@ export const TEMPLATES = [
   N_('兩步驟驗證被 {name} 重設'),
   N_('鎖定中（{why}，還有 {n} 秒）'),
   N_('鎖定中（修改密碼，還有 {n} 秒）'),
+  N_('歸檔/{name}'),
   N_('寫入 NFO（{n} 位角色）'),
   N_('匯入 NFO（{n} 位角色）'),
   N_('壓縮 {n} 個檔案'),

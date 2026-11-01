@@ -19,9 +19,9 @@ Tested at:
 
 > VAM manages your own files. It **contains and provides no media**.
 >
-> The interface is available in **Traditional Chinese, Simplified Chinese and English**; each account picks its own from the account menu at the top right. The screenshots show the Traditional Chinese interface.
+> The interface is available in **Traditional Chinese, Simplified Chinese and English**; each account picks its own from the account menu at the top right.
 
-<p align="center"><img src="screenshots/home.jpg" alt="Home: people grouped into categories, each category with its own card shape" width="900"></p>
+<p align="center"><img src="screenshots/en/home.jpg" alt="Home: people grouped into categories, each category with its own card shape" width="900"></p>
 
 <sub>Every screenshot on this page comes from a demo library: the people and photos are fictional and AI-generated.</sub>
 
@@ -55,8 +55,8 @@ New downloads land in an **inbox** (待分類) first. Once you have checked them
 
 <table>
   <tr>
-    <td width="50%"><img src="screenshots/character-videos.jpg" alt="A person's videos"></td>
-    <td width="50%"><img src="screenshots/contact-sheet.jpg" alt="Contact sheet"></td>
+    <td width="50%"><img src="screenshots/en/character-videos.jpg" alt="A person's videos"></td>
+    <td width="50%"><img src="screenshots/en/contact-sheet.jpg" alt="Contact sheet"></td>
   </tr>
   <tr>
     <td align="center">A person's videos: covers, watched and favourite marks, filters and sorting</td>
@@ -64,7 +64,7 @@ New downloads land in an **inbox** (待分類) first. Once you have checked them
   </tr>
 </table>
 
-<p align="center"><img src="screenshots/player.jpg" alt="Player: edit the title and notes while watching" width="800"></p>
+<p align="center"><img src="screenshots/en/player.jpg" alt="Player: edit the title and notes while watching" width="800"></p>
 
 ## Photos
 
@@ -74,9 +74,9 @@ New downloads land in an **inbox** (待分類) first. Once you have checked them
 
 <table>
   <tr>
-    <td width="40%"><img src="screenshots/character-profile.jpg" alt="A person's profile and photo wall"></td>
-    <td width="40%"><img src="screenshots/albums.jpg" alt="Albums from subfolders"></td>
-    <td width="20%"><img src="screenshots/mobile.jpg" alt="On a phone"></td>
+    <td width="40%"><img src="screenshots/en/character-profile.jpg" alt="A person's profile and photo wall"></td>
+    <td width="40%"><img src="screenshots/en/albums.jpg" alt="Albums from subfolders"></td>
+    <td width="20%"><img src="screenshots/en/mobile.jpg" alt="On a phone"></td>
   </tr>
   <tr>
     <td align="center">Profile, social links and photo wall</td>
@@ -94,7 +94,7 @@ New downloads land in an **inbox** (待分類) first. Once you have checked them
 - **Managing people**: rename, merge two people's folders, custom tags (usable as filters), social links, profile details, and framing the avatar.
 - **NFO**: reads and writes Kodi / Jellyfin / Emby `.nfo` files. Reading only fills empty fields and never overwrites what you have edited.
 
-<p align="center"><img src="screenshots/archive.jpg" alt="Inbox: click a video to preview it below, pick a person and file it" width="800"></p>
+<p align="center"><img src="screenshots/en/archive.jpg" alt="Inbox: click a video to preview it below, pick a person and file it" width="800"></p>
 
 ---
 
@@ -104,7 +104,7 @@ New downloads land in an **inbox** (待分類) first. Once you have checked them
 - **Images**: finds identical and near-identical photos, including watermarked versions.
 - Scans can be stopped part-way and resume by themselves after a server restart; nothing is deleted before you have confirmed a list.
 
-<p align="center"><img src="screenshots/duplicates.jpg" alt="Duplicate scan: an identical file, and the same video at a lower quality" width="800"></p>
+<p align="center"><img src="screenshots/en/duplicates.jpg" alt="Duplicate scan: an identical file, and the same video at a lower quality" width="800"></p>
 
 ---
 
@@ -127,7 +127,7 @@ Every tool that changes a video **verifies** the result: if verification fails, 
 - **Shrink**: re-encodes to save space, **always to a new file**. You can play the original and the smaller version side by side, in sync, and compare quality before deciding which to keep.
 - **Clip**: select several segments and join them into one video. Pick rough ranges on the contact sheet, then fine-tune in the player. Choose "fast" (snaps to keyframes, no quality loss) or "frame-accurate" (re-encodes).
 
-<p align="center"><img src="screenshots/clip.jpg" alt="Clipping: pick several segments and join them into one video" width="800"></p>
+<p align="center"><img src="screenshots/en/clip.jpg" alt="Clipping: pick several segments and join them into one video" width="800"></p>
 
 ---
 
@@ -154,7 +154,7 @@ Every tool that changes a video **verifies** the result: if verification fails, 
 - **Backups**: the databases are backed up every day to another drive of your choice.
 - **Interface language**: Traditional Chinese, Simplified Chinese or English. Each account chooses its own and the choice is stored with the account, so it follows you to another device; the sign-in page uses whatever this browser used last.
 
-<p align="center"><img src="screenshots/permissions.jpg" alt="Permission groups: tick which features each group can use" width="800"></p>
+<p align="center"><img src="screenshots/en/permissions.jpg" alt="Permission groups: tick which features each group can use" width="800"></p>
 
 ---
 

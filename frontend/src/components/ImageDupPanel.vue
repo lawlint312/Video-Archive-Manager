@@ -321,7 +321,7 @@ onMounted(async () => {
                     <div class="nm" :title="f.path">{{ f.name }}</div>
                     <div class="sm">
                       {{ f.width }}×{{ f.height }} · {{ fmtSize(f.size) }}
-                      <span class="lab">{{ f.label }}</span>
+                      <span class="lab">{{ ts(f.label) }}</span>
                     </div>
                     <!-- what the scan measured, so a wrong call is visible
                          on the card instead of only in the suggestion -->

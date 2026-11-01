@@ -379,13 +379,13 @@ async function executeAuto() {
 
         <template v-else>
           <div class="summary">
-            {{ t('發現') }} <b>{{ groups.length }}</b> {{ t('組重複') }}　{{ t('可釋出約') }} <b>{{ fmtSize(totalWaste) }}</b>　｜
-            <span class="t1dot">●</span> Tier 1 <b>{{ tier1.length }}</b> {{ t('組') }}
+            {{ t('發現') }} <b>{{ groups.length }}</b> {{ t('組重複', { n: groups.length }) }}　{{ t('可釋出約') }} <b>{{ fmtSize(totalWaste) }}</b>　｜
+            <span class="t1dot">●</span> Tier 1 <b>{{ tier1.length }}</b> {{ t('組', { n: tier1.length }) }}
             <template v-if="tier2Groups.length">
-              　<span class="t2dot">●</span> {{ t('Tier 2（不同畫質）') }} <b>{{ tier2Groups.length }}</b> {{ t('組') }}
+              　<span class="t2dot">●</span> {{ t('Tier 2（不同畫質）') }} <b>{{ tier2Groups.length }}</b> {{ t('組', { n: tier2Groups.length }) }}
             </template>
-            　{{ t('自動建議') }} <b class="ok">{{ certainN }}</b> {{ t('組') }}
-            　{{ t('需人工確認') }} <b class="warnc">{{ uncertainN }}</b> {{ t('組') }}
+            　{{ t('自動建議') }} <b class="ok">{{ certainN }}</b> {{ t('組', { n: certainN }) }}
+            　{{ t('需人工確認') }} <b class="warnc">{{ uncertainN }}</b> {{ t('組', { n: uncertainN }) }}
           </div>
 
           <div class="legend">
@@ -460,7 +460,7 @@ async function executeAuto() {
 
               <template v-for="f in g.files" :key="f.path">
               <div class="row" :class="rowClass(g, f)">
-                <span class="tag">[{{ f.label }}]</span>
+                <span class="tag">[{{ ts(f.label) }}]</span>
                 <span class="fn" :title="f.path">{{ f.name }}</span>
                 <span class="col" :class="{ best: f.duration > 0 && f.duration === bestDur(g) }">
                   {{ f.duration > 0 && f.duration === bestDur(g) ? '★ ' : '' }}{{ fmtDur(f.duration) }}
