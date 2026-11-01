@@ -11,34 +11,37 @@
  *
  *   node tests/relinfo.test.mjs
  */
+import { t, N_ } from './i18n.js'
+
+// the words are keys, translated where they are read (relVerb, relNote)
 const AS_CHILD = {     // this film is the child: what the other one is to it
-  original: '擷取自',
-  uncut: '完整收錄於',
+  original: N_('擷取自'),
+  uncut: N_('完整收錄於'),
   // the user's wording (2026-10-27): 「片段收錄於」 read badly
-  digest: '被選入精選集',
-  unknown: '收錄於',
+  digest: N_('被選入精選集'),
+  unknown: N_('收錄於'),
 }
 const AS_PARENT = {    // this film is the parent
-  original: '被擷取成',
-  uncut: '完整收錄',     // the user's wording, not 「完整收錄了」
+  original: N_('被擷取成'),
+  uncut: N_('完整收錄'),     // the user's wording, not 「完整收錄了」
   // ends before the number: the row reads "verb → number → title"
-  digest: '片段來自',
-  unknown: '包含',
+  digest: N_('片段來自'),
+  unknown: N_('包含'),
 }
 const NOTE = {
-  original: '原片',
-  uncut: '總集編',
-  digest: '精選總集編',
-  unknown: '缺發行日，無法判斷哪部是原片',
+  original: N_('原片'),
+  uncut: N_('總集編'),
+  digest: N_('精選總集編'),
+  unknown: N_('缺發行日，無法判斷哪部是原片'),
 }
 
 /** The words before the other film's number. */
 export function relVerb(kind, thisIsParent) {
-  return (thisIsParent ? AS_PARENT : AS_CHILD)[kind] || (thisIsParent ? '包含' : '收錄於')
+  return t((thisIsParent ? AS_PARENT : AS_CHILD)[kind] || (thisIsParent ? '包含' : '收錄於'))
 }
 
 export function relNote(kind) {
-  return NOTE[kind] || ''
+  return NOTE[kind] ? t(NOTE[kind]) : ''
 }
 
 /**
@@ -73,7 +76,7 @@ export function relSummary(rel) {
   }
   for (const verb of groups.keys()) {
     const ids = groups.get(verb)
-    parts.push(ids.length === 1 ? `${verb} ${ids[0]}` : `${verb} ${ids.length} 部`)
+    parts.push(ids.length === 1 ? `${verb} ${ids[0]}` : t('{verb} {n} 部', { verb, n: ids.length }))
   }
   return parts.join(' · ')
 }

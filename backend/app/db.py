@@ -195,6 +195,9 @@ _MIGRATIONS = [
     ("sessions", "ip", "ALTER TABLE sessions ADD COLUMN ip TEXT"),
     ("sessions", "user_agent", "ALTER TABLE sessions ADD COLUMN user_agent TEXT"),
     ("sessions", "last_seen", "ALTER TABLE sessions ADD COLUMN last_seen TEXT"),
+    # Interface language, chosen from the account menu ('zh-TW' | 'zh-CN' |
+    # 'en'). NULL = never chosen: the browser keeps whatever it detected.
+    ("users", "lang", "ALTER TABLE users ADD COLUMN lang TEXT"),
 ]
 
 

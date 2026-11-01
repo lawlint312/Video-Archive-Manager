@@ -17,6 +17,8 @@ import { setStatus } from '../store'
 import VideoPlayer from './VideoPlayer.vue'
 import { upsert, drop, commitable } from '../clipsegments'
 import Icon from './Icon.vue'
+import { t } from '../i18n'
+import { ts } from '../serverstrings.js'
 
 const props = defineProps({
   video: { type: Object, required: true },
@@ -175,10 +177,10 @@ function body() {
 async function fetchPlan() {
   try {
     const d = await api('/api/clip/plan', { method: 'POST', body: body() })
-    if (!d.ok) { planErr.value = d.error || '無效的片段'; return }
+    if (!d.ok) { planErr.value = ts(d.error) || t('無效的片段'); return }
     plan.value = d
   } catch (e) {
-    planErr.value = e.detail || String(e.status)
+    planErr.value = ts(e.detail) || String(e.status)
   }
 }
 
@@ -195,7 +197,7 @@ async function start() {
                                  { method: 'POST', body: body() })
     await poll(job_id)
   } catch (e) {
-    planErr.value = e.detail || String(e.status)
+    planErr.value = ts(e.detail) || String(e.status)
     running.value = false
   }
 }
@@ -211,11 +213,11 @@ function poll(jobId) {
           return
         }
         running.value = false
-        if (j.status === 'error') planErr.value = j.error || '剪輯失敗'
+        if (j.status === 'error') planErr.value = ts(j.error) || t('剪輯失敗')
         else {
           made.value.unshift(j.result)
           emit('created', j.result)
-          setStatus(`已剪出 ${j.result.name}`, 'ok')
+          setStatus(t('已剪出 {name}', { name: j.result.name }), 'ok')
           // ready for the next one; the player keeps its position
           segments.value = []
           inT.value = null
@@ -223,7 +225,7 @@ function poll(jobId) {
         }
       } catch (e) {
         running.value = false
-        planErr.value = e.detail || String(e.status)
+        planErr.value = ts(e.detail) || String(e.status)
       }
       resolve()
     }
@@ -253,11 +255,11 @@ onBeforeUnmount(() => {
   <div class="modal" @click.self="emit('close')">
     <div class="box">
       <div class="head">
-        <span class="ib"><Icon name="scissors" :size="14" /> 剪輯</span>
+        <span class="ib"><Icon name="scissors" :size="14" /> {{ t('剪輯') }}</span>
         <span class="nm" :title="video.name">{{ video.name }}</span>
         <span class="spacer"></span>
         <button class="btn ghost ib" @click="emit('close')">
-          <Icon name="close" :size="14" /> 關閉
+          <Icon name="close" :size="14" /> {{ t('關閉') }}
         </button>
       </div>
 
@@ -266,10 +268,10 @@ onBeforeUnmount(() => {
 
       <div class="marks">
         <button class="mbtn ib" @click="markIn">
-          <Icon name="markIn" :size="13" /> 起點 <kbd>I</kbd>
+          <Icon name="markIn" :size="13" /> {{ t('起點') }} <kbd>I</kbd>
         </button>
         <span class="tval" :class="{ set: inT !== null }"
-              :title="inT !== null ? '點一下跳到起點' : ''"
+              :title="inT !== null ? t('點一下跳到起點') : ''"
               @click="seekTo(inT)">{{ hms(inT) }}</span>
         <span class="nudge" v-if="inT !== null">
           <button @click="nudge('in', -1)">−1s</button>
@@ -281,10 +283,10 @@ onBeforeUnmount(() => {
         <span class="arrow">→</span>
 
         <button class="mbtn ib" @click="markOut">
-          <Icon name="markOut" :size="13" /> 終點 <kbd>O</kbd>
+          <Icon name="markOut" :size="13" /> {{ t('終點') }} <kbd>O</kbd>
         </button>
         <span class="tval" :class="{ set: outT !== null }"
-              :title="outT !== null ? '點一下跳到終點' : ''"
+              :title="outT !== null ? t('點一下跳到終點') : ''"
               @click="seekTo(outT)">{{ hms(outT) }}</span>
         <span class="nudge" v-if="outT !== null">
           <button @click="nudge('out', -1)">−1s</button>
@@ -294,13 +296,13 @@ onBeforeUnmount(() => {
         </span>
 
         <span v-if="span !== null" class="len">{{ hms(span) }}</span>
-        <button v-if="inT !== null" class="lnk" @click="preview">預覽起點</button>
+        <button v-if="inT !== null" class="lnk" @click="preview">{{ t('預覽起點') }}</button>
         <span class="spacer"></span>
         <button class="btn small ib" :disabled="!canAdd" @click="addSegment">
           <Icon name="plus" :size="13" />
-          {{ editing ? '更新片段' : '加入片段' }} <kbd>Enter</kbd>
+          {{ editing ? t('更新片段') : t('加入片段') }} <kbd>Enter</kbd>
         </button>
-        <button v-if="editing" class="lnk" @click="cancelEdit">取消調整</button>
+        <button v-if="editing" class="lnk" @click="cancelEdit">{{ t('取消調整') }}</button>
       </div>
 
       <div v-if="segments.length" class="segs">
@@ -309,34 +311,34 @@ onBeforeUnmount(() => {
           <span class="sn">{{ i + 1 }}</span>
           <span class="stime">{{ hms(s.start) }} – {{ hms(s.end) }}</span>
           <span class="dim">{{ hms(s.end - s.start, 0) }}</span>
-          <button class="lnk" @click="playSegment(s)">播放</button>
+          <button class="lnk" @click="playSegment(s)">{{ t('播放') }}</button>
           <button class="lnk" v-if="s.id !== editingId"
-                  @click="editSegment(s)">調整</button>
-          <span v-else class="badge">調整中 — 改好按「更新片段」</span>
+                  @click="editSegment(s)">{{ t('調整') }}</button>
+          <span v-else class="badge">{{ t('調整中 — 改好按「更新片段」') }}</span>
           <span class="spacer"></span>
-          <button class="xbtn" title="移除這段" @click="dropSegment(s.id)">
+          <button class="xbtn" :title="t('移除這段')" @click="dropSegment(s.id)">
             <Icon name="close" :size="12" />
           </button>
         </div>
         <div class="segfoot">
-          共 <b>{{ segments.length }}</b> 段 · 合計 {{ hms(total, 0) }}
-          <span class="dim">· 依時間先後接成一個檔案</span>
+          {{ t('共') }} <b>{{ segments.length }}</b> {{ t('段') }} · {{ t('合計 {time}', { time: hms(total, 0) }) }}
+          <span class="dim">· {{ t('依時間先後接成一個檔案') }}</span>
         </div>
       </div>
       <div v-else class="segs empty">
-        邊看邊按 <kbd>I</kbd> 標起點、<kbd>O</kbd> 標終點，再「加入片段」（至少 1 秒）。
-        加入多段會<b>接成一個檔案</b>。
+        {{ t('邊看邊按') }} <kbd>I</kbd> {{ t('標起點、') }}<kbd>O</kbd> {{ t('標終點，再「加入片段」（至少 1 秒）。') }}
+        {{ t('加入多段會') }}<b>{{ t('接成一個檔案') }}</b>{{ t('。') }}
       </div>
 
       <div class="opts">
-        <label class="ib"><input type="checkbox" v-model="precise" /> 精準切割（重編碼）</label>
-        <label v-if="precise" class="ib"><input type="checkbox" v-model="gpu" /> 用 GPU</label>
+        <label class="ib"><input type="checkbox" v-model="precise" /> {{ t('精準切割（重編碼）') }}</label>
+        <label v-if="precise" class="ib"><input type="checkbox" v-model="gpu" /> {{ t('用 GPU') }}</label>
         <span class="hint">
           <template v-if="!precise">
-            複製切割：無損、實測 3 段 0.8 秒，但每段起點只能落在關鍵幀
+            {{ t('複製切割：無損、實測 3 段 0.8 秒，但每段起點只能落在關鍵幀') }}
           </template>
           <template v-else>
-            每段都準到格，但要重新編碼 —— 實測 3 段共 2.9 分鐘，GPU 17 秒、CPU 約 1.5 分
+            {{ t('每段都準到格，但要重新編碼 —— 實測 3 段共 2.9 分鐘，GPU 17 秒、CPU 約 1.5 分') }}
           </template>
         </span>
       </div>
@@ -345,32 +347,30 @@ onBeforeUnmount(() => {
 
       <div v-else-if="plan" class="plan">
         <div>
-          輸出 <b>{{ plan.out_name }}</b>
+          {{ t('輸出') }} <b>{{ plan.out_name }}</b>
           <span class="dim">· {{ hms(plan.duration, 0) }}</span>
-          <span class="dim">· 約 {{ fmtSize(plan.est_size) }}</span>
-          <span class="dim">· 與原檔同一個資料夾</span>
+          <span class="dim">· {{ t('約 {size}', { size: fmtSize(plan.est_size) }) }}</span>
+          <span class="dim">· {{ t('與原檔同一個資料夾') }}</span>
         </div>
         <div v-if="plan.merged" class="warn ib">
-          <Icon name="warn" :size="12" /> 有重疊的片段已合併，實際會輸出
-          {{ plan.parts.length }} 段
+          <Icon name="warn" :size="12" /> {{ t('有重疊的片段已合併，實際會輸出 {n} 段', { n: plan.parts.length }) }}
         </div>
         <div v-for="(q, i) in plan.parts" :key="i" class="pline">
           <template v-if="q.snapped && q.drift > 0.01">
-            <span class="dim">第 {{ i + 1 }} 段</span>
-            實際從 <b>{{ hms(q.actual_start) }}</b> 開始（早了
-            {{ q.drift.toFixed(2) }} 秒）
+            <span class="dim">{{ t('第 {n} 段', { n: i + 1 }) }}</span>
+            {{ t('實際從') }} <b>{{ hms(q.actual_start) }}</b> {{ t('開始（早了 {n} 秒）', { n: q.drift.toFixed(2) }) }}
           </template>
           <template v-else-if="!q.snapped && !precise">
-            <span class="dim">第 {{ i + 1 }} 段</span>
-            找不到關鍵幀位置，實際起點可能早幾秒
+            <span class="dim">{{ t('第 {n} 段', { n: i + 1 }) }}</span>
+            {{ t('找不到關鍵幀位置，實際起點可能早幾秒') }}
           </template>
         </div>
         <div v-if="!precise && plan.parts.some(q => q.drift > 0.01)"
              class="warn ib">
-          <Icon name="warn" :size="12" /> 複製切割只能從關鍵幀開始。要準到格請勾「精準切割」
+          <Icon name="warn" :size="12" /> {{ t('複製切割只能從關鍵幀開始。要準到格請勾「精準切割」') }}
         </div>
         <div v-if="!plan.enough_space" class="err">
-          空間不足：剩餘 {{ fmtSize(plan.free) }}
+          {{ t('空間不足：剩餘 {size}', { size: fmtSize(plan.free) }) }}
         </div>
       </div>
 
@@ -381,23 +381,23 @@ onBeforeUnmount(() => {
           <Icon v-if="running" name="spinner" :size="14" class="spin" />
           <Icon v-else name="scissors" :size="14" />
           {{ running
-              ? `剪輯中… ${Math.round(pct * 100)}%`
+              ? t('剪輯中… {pct}%', { pct: Math.round(pct * 100) })
               : segments.length > 1
-                ? `剪出 1 個檔案（${segments.length} 段接起來）`
-                : '開始剪輯' }}
+                ? t('剪出 1 個檔案（{n} 段接起來）', { n: segments.length })
+                : t('開始剪輯') }}
         </button>
         <span class="spacer"></span>
-        <span class="dim">原始檔案不會被更動；要刪除請用「刪除模式」</span>
+        <span class="dim">{{ t('原始檔案不會被更動；要刪除請用「刪除模式」') }}</span>
       </div>
 
       <div v-if="made.length" class="made">
-        <div class="mhdr">這次剪出的檔案</div>
+        <div class="mhdr">{{ t('這次剪出的檔案') }}</div>
         <div v-for="m in made" :key="m.path" class="mrow">
           <Icon name="check" :size="13" class="ok" />
           <span class="mname" :title="m.path">{{ m.name }}</span>
           <span class="dim">
             {{ hms(m.duration, 0) }}
-            <template v-if="m.segments > 1">· {{ m.segments }} 段</template>
+            <template v-if="m.segments > 1">· {{ t('{n} 段', { n: m.segments }) }}</template>
             · {{ fmtSize(m.size) }}
           </span>
         </div>

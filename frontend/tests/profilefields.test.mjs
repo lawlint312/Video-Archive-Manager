@@ -6,7 +6,7 @@
 // birthdays, and an age is derived on every render rather than stored,
 // because a stored one is wrong within a year.
 import {
-  parseDob, formatDob, formatAge, profileCells,
+  parseDob, formatDob, formatAge, profileCells, normalizeDob,
 } from '../src/profilefields.js'
 
 let failed = 0
@@ -21,8 +21,25 @@ const NOW = new Date(2026, 7, 1)        // 2026-08-01
 console.log('year-only dates show the year alone')
 check('2000-??-??', formatDob('2000-??-??'), '2000')
 check('full date survives', formatDob('1995-03-29'), '1995-03-29')
-check('month known, day not', formatDob('1995-03-??'), '1995')
+check('month known, day not', formatDob('1995-03-??'), '1995-03')
 check('no year at all', formatDob('????-??-??'), '')
+
+console.log('\nshort forms typed by hand')
+check('1996', normalizeDob('1996'), '1996-??-??')
+check('1996-03', normalizeDob('1996-03'), '1996-03-??')
+check('1996/3', normalizeDob('1996/3'), '1996-03-??')
+check('1996.3.9', normalizeDob(' 1996.3.9 '), '1996-03-09')
+check('long form untouched', normalizeDob('1996-??-??'), '1996-??-??')
+check('junk untouched', normalizeDob('soon'), 'soon')
+check('five digits is not a year', normalizeDob('19960'), '19960')
+check('1996 shows', formatDob('1996'), '1996')
+check('1996-03 shows', formatDob('1996-03'), '1996-03')
+check('month 13 falls back to the year', formatDob('1996-13'), '1996')
+check('1996 has an age', formatAge('1996', NOW), '約 30 歲')
+// NOW is 2026-08-01
+check('month passed: exact', formatAge('1996-03', NOW), '30 歲')
+check('month to come: exact', formatAge('1996-11', NOW), '29 歲')
+check('in the birth month: approximate', formatAge('1996-08', NOW), '約 30 歲')
 check('not a date', formatDob('soon'), '')
 check('empty', formatDob(''), '')
 

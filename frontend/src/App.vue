@@ -8,6 +8,7 @@ import { groupData } from './groups'
 import { viewForChar, pickTab } from './groupview'
 import { resumeScan } from './dedup'
 import { resumeScan as resumeImgScan } from './imgdedup'
+import { t, LOCALES, i18n, setLocale } from './i18n'
 import LoginView from './components/LoginView.vue'
 import CharacterSidebar from './components/CharacterSidebar.vue'
 import VideoGrid from './components/VideoGrid.vue'
@@ -28,6 +29,7 @@ import TwoFactorDialog from './components/TwoFactorDialog.vue'
 import SessionsDialog from './components/SessionsDialog.vue'
 import InterruptedJobsDialog from './components/InterruptedJobsDialog.vue'
 import { followJob } from './jobfollow'
+import { ts } from './serverstrings.js'
 
 const ready = ref(false)
 const selectedInbox = ref(null)
@@ -36,7 +38,7 @@ const mergeChar = ref(null)
 const faceIndexing = ref(false)
 
 async function runFaceIndex() {
-  if (!confirm('為所有角色建立人臉索引？\n\n第一次執行會逐一分析每部影片，可能需要很長時間。\n（已索引過的影片會自動跳過）')) return
+  if (!confirm(t('為所有角色建立人臉索引？\n\n第一次執行會逐一分析每部影片，可能需要很長時間。\n（已索引過的影片會自動跳過）'))) return
   faceIndexing.value = true
   try {
     const { job_id } = await api('/api/face/index', {
@@ -46,15 +48,15 @@ async function runFaceIndex() {
       await new Promise(r => setTimeout(r, 800))
       const j = await api(`/api/face/job/${job_id}`)
       if (j.progress && typeof j.progress === 'object') {
-        setBusy(`人臉索引：${j.progress.person} / ${j.progress.file}`)
+        setBusy(t('人臉索引：{person} / {file}', j.progress))
       }
       if (j.status === 'done') {
-        setStatus(`人臉索引完成，新增 ${j.result.indexed} 部`, 'ok'); break
+        setStatus(t('人臉索引完成，新增 {n} 部', { n: j.result.indexed }), 'ok'); break
       }
-      if (j.status === 'error') { setStatus('索引失敗：' + j.error, 'warn'); break }
+      if (j.status === 'error') { setStatus(t('索引失敗：') + ts(j.error), 'warn'); break }
     }
   } catch (e) {
-    setStatus('索引失敗：' + errText(e), 'warn')
+    setStatus(t('索引失敗：') + errText(e), 'warn')
   } finally { faceIndexing.value = false; setBusy('') }
 }
 
@@ -62,7 +64,7 @@ function onMergeDone() {
   mergeChar.value = null
   store.selectedChar = null
   sidebarKey.value++
-  setStatus('資料夾整合完成', 'ok')
+  setStatus(t('資料夾整合完成'), 'ok')
 }
 
 const showLog = ref(false)
@@ -96,8 +98,8 @@ function fmtSize(b) {
 
 function archiveSelected() {
   const person = batchPerson.value.trim()
-  if (!person) { alert('請輸入或選擇角色名稱'); return }
-  if (!confirm(`將 ${batchSel.value.length} 部影片歸檔到「${person}」？`)) return
+  if (!person) { alert(t('請輸入或選擇角色名稱')); return }
+  if (!confirm(t('將 {n} 部影片歸檔到「{person}」？', { n: batchSel.value.length, person }))) return
   for (const v of batchSel.value) enqueueArchive({ video: v, person })
   inboxGrid.value?.clearSel()
   batchSel.value = []
@@ -142,23 +144,23 @@ async function processQueue() {
             const pct = p.total ? Math.round(p.done / p.total * 100) : 0
             const spd = p.speed >= 1 << 20 ? (p.speed / (1 << 20)).toFixed(1) + ' MB/s'
                        : p.speed ? (p.speed / 1024).toFixed(0) + ' KB/s' : ''
-            setBusy(`移動中 ${p.name} ${pct}% ${spd}` +
-                    (waiting ? `（還有 ${waiting} 個等待）` : ''))
+            setBusy(t('移動中 {name} {pct}% {spd}', { name: p.name, pct, spd }) +
+                    (waiting ? t('（還有 {n} 個等待）', { n: waiting }) : ''))
           }
           if (j.status === 'done') {
             logArchived(video.name, person)
-            setStatus(`已歸檔到「${person}」：${video.name}` +
-                      (waiting ? `（還有 ${waiting} 個等待）` : ''), 'ok')
+            setStatus(t('已歸檔到「{person}」：{name}', { person, name: video.name }) +
+                      (waiting ? t('（還有 {n} 個等待）', { n: waiting }) : ''), 'ok')
             sidebarKey.value++
             break
           }
           if (j.status === 'error') {
-            setStatus(`歸檔失敗 ${video.name}：${j.error}`, 'warn')
+            setStatus(t('歸檔失敗 {name}：', { name: video.name }) + ts(j.error), 'warn')
             break
           }
         }
       } catch (e) {
-        setStatus(`歸檔失敗 ${video.name}：${errText(e)}`, 'warn')
+        setStatus(t('歸檔失敗 {name}：', { name: video.name }) + errText(e), 'warn')
       }
     }
   } finally {
@@ -209,24 +211,24 @@ const dupStart = computed(() => {
 // other.
 const toolItems = computed(() => !store.editMode ? [] : [
   can('person') && { key: 'face', icon: 'face',
-    label: faceIndexing.value ? '索引中…' : '人臉索引',
-    title: store.faceAvailable ? '為所有角色建立人臉索引' : store.faceReason,
+    label: faceIndexing.value ? t('索引中…') : t('人臉索引'),
+    title: store.faceAvailable ? t('為所有角色建立人臉索引') : store.faceReason,
     disabled: !store.faceAvailable || faceIndexing.value, run: runFaceIndex },
-  can('lookup') && { key: 'lookup', icon: 'search', label: '角色查詢',
-    title: '個資、片名、WIKI 匯入', run: () => { showJav.value = true } },
-  can('convert', 'shrink') && { key: 'convert', icon: 'refresh', label: '轉檔',
-    title: '把非 MP4 的影片轉成瀏覽器能播的 MP4',
+  can('lookup') && { key: 'lookup', icon: 'search', label: t('角色查詢'),
+    title: t('個資、片名、WIKI 匯入'), run: () => { showJav.value = true } },
+  can('convert', 'shrink') && { key: 'convert', icon: 'refresh', label: t('轉檔'),
+    title: t('把非 MP4 的影片轉成瀏覽器能播的 MP4'),
     run: () => { showConvert.value = true } },
   can('dedup') && { key: 'dedup', icon: dupRunning.value ? 'spinner' : 'copy',
-    spin: dupRunning.value, label: dupRunning.value ? '掃描中…' : '重複掃描',
-    title: '找出重複的影片與圖片', badge: dupRunning.value ? 0 : dupTotal.value,
+    spin: dupRunning.value, label: dupRunning.value ? t('掃描中…') : t('重複掃描'),
+    title: t('找出重複的影片與圖片'), badge: dupRunning.value ? 0 : dupTotal.value,
     run: () => { dupTab.value = dupStart.value } },
 ].filter(Boolean))
 // What the closed menu has to say on its own: a scan or index in progress,
 // and the duplicate count that used to sit on the 重複掃描 button.
 const toolsBusy = computed(() => faceIndexing.value || dupRunning.value)
 const toolMenu = ref(false)
-function runTool(t) { toolMenu.value = false; t.run() }
+function runTool(tool) { toolMenu.value = false; tool.run() }
 const showSettings = ref(false)
 const userMenu = ref(false)
 const showPassword = ref(false)
@@ -243,6 +245,20 @@ function openSessions() { userMenu.value = false; showSessions.value = true }
 
 const showTwoFactor = ref(false)
 function openTwoFactor() { userMenu.value = false; showTwoFactor.value = true }
+
+// Saved on the account, so it follows the user to every device; applied at
+// once whether or not the save gets through.
+async function pickLang(code) {
+  userMenu.value = false
+  setLocale(code)
+  if (store.user) store.user.lang = code
+  try {
+    await api('/api/auth/lang', { method: 'POST', body: JSON.stringify({ lang: code }) })
+  } catch (e) { setStatus(t('語言設定沒有存到帳號：') + errText(e), 'warn') }
+}
+// An account that has picked one gets it on every sign-in; one that never
+// has keeps what this browser detected.
+watch(() => store.user?.lang, lang => { if (lang) setLocale(lang) }, { immediate: true })
 // Admin and editor accounts cannot use anything else until this is set up, so
 // the dialog opens itself — exactly like the weak-password one above.
 const forcedTwoFactor = computed(() =>
@@ -257,7 +273,7 @@ async function onTwoFactorEnabled() {
 // user here only makes the page follow, with a line saying why.
 function onPasswordChanged() {
   showPassword.value = false
-  store.loginNotice = '密碼已修改，請用新密碼重新登入'
+  store.loginNotice = t('密碼已修改，請用新密碼重新登入')
   store.user = null
 }
 const showGroups = ref(false)
@@ -272,7 +288,7 @@ async function loadSessionConfig() {
   try {
     const f = await api('/api/face/status')
     store.faceAvailable = !!f.available
-    store.faceReason = f.reason || ''
+    store.faceReason = ts(f.reason)
   } catch { store.faceAvailable = false }
 }
 
@@ -302,8 +318,8 @@ async function resumeJobs() {
   const others = running.filter(j => j !== scan && j !== iscan &&
                                       !(cscan && j.id === cscan.job_id))
   if (others.length) {
-    setStatus('伺服器上還有進行中的作業：' +
-              others.map(j => j.label).join('、'), 'warn')
+    setStatus(t('伺服器上還有進行中的作業：') +
+              others.map(j => ts(j.label)).join(t('、')), 'warn')
   }
 }
 
@@ -327,7 +343,7 @@ async function onResumed(r) {
     } catch { /* the status bar line below still says it started */ }
     return
   }
-  const j = await followJob(r.job_id, r.label)
+  const j = await followJob(r.job_id, ts(r.label))
   // files were converted, moved or written: lists and counts are stale
   if (j && j.status !== 'error') { sidebarKey.value++; store.filesVersion++ }
 }
@@ -405,7 +421,7 @@ onMounted(checkAuth)
 </script>
 
 <template>
-  <div v-if="!ready" class="boot">載入中…</div>
+  <div v-if="!ready" class="boot">{{ t('載入中…') }}</div>
 
   <LoginView v-else-if="!store.user" />
 
@@ -415,15 +431,15 @@ onMounted(checkAuth)
          this is the way back to the drawer and the user menu. It sits in a
          slim rail of its own rather than floating over the content, where it
          would cover whatever is in the top-left corner of each page. -->
-    <button class="railbtn" aria-label="選單" @click="drawerOpen = true">
+    <button class="railbtn" :aria-label="t('選單')" @click="drawerOpen = true">
       <Icon name="rows" :size="20" />
     </button>
     <header class="topbar">
-      <button class="iconbtn only-narrow" aria-label="選單"
+      <button class="iconbtn only-narrow" :aria-label="t('選單')"
               @click="drawerOpen = !drawerOpen">
         <Icon :name="drawerOpen ? 'close' : 'rows'" :size="18" />
       </button>
-      <button class="brand ib" title="回到首頁" @click="goHome">
+      <button class="brand ib" :title="t('回到首頁')" @click="goHome">
         <img class="mark" src="/brand-mark.png" alt="" />
         <span class="brandtext">Video Archive Manager</span>
       </button>
@@ -432,50 +448,50 @@ onMounted(checkAuth)
       <button
         v-if="store.user.role === 'admin'"
         class="btn ghost ib" @click="showSettings = true"
-      ><Icon name="settings" /> 設定</button>
+      ><Icon name="settings" /> {{ t('設定') }}</button>
       <!-- 角色查詢 is one button, three tabs: 個資 and 片名 were separate
            dialogs that shared a character picker and a scanning pattern, and
            WIKI 匯入 answers the same question from a different source.
            重複掃描 only reflects the scan's state; the scan lives in dedup.js. -->
-      <button v-for="t in toolItems" :key="t.key"
-              class="btn ghost ib wide-tool" :class="{ hasdup: t.badge > 0 }"
-              :disabled="t.disabled" :title="t.title" @click="t.run()"
-      ><Icon :name="t.icon" :class="{ spin: t.spin }" /> {{ t.label }}
-        <span v-if="t.badge" class="dupbadge">{{ t.badge }}</span></button>
+      <button v-for="tool in toolItems" :key="tool.key"
+              class="btn ghost ib wide-tool" :class="{ hasdup: tool.badge > 0 }"
+              :disabled="tool.disabled" :title="tool.title" @click="tool.run()"
+      ><Icon :name="tool.icon" :class="{ spin: tool.spin }" /> {{ tool.label }}
+        <span v-if="tool.badge" class="dupbadge">{{ tool.badge }}</span></button>
       </div>
       <!-- Below 1200px the tools above are hidden and live in here instead. -->
       <div v-if="toolItems.length" class="umenu toolmenu no-mobile">
         <button class="btn ghost ib" :class="{ on: toolMenu, hasdup: dupTotal > 0 && !dupRunning }"
-                @click="toolMenu = !toolMenu" title="編輯工具">
-          <Icon :name="toolsBusy ? 'spinner' : 'wrench'" :class="{ spin: toolsBusy }" /> 工具
+                @click="toolMenu = !toolMenu" :title="t('編輯工具')">
+          <Icon :name="toolsBusy ? 'spinner' : 'wrench'" :class="{ spin: toolsBusy }" /> {{ t('工具') }}
           <span v-if="dupTotal && !dupRunning" class="dupbadge">{{ dupTotal }}</span>
           <Icon name="chevronDown" :size="12" />
         </button>
         <template v-if="toolMenu">
           <div class="umask" @click="toolMenu = false"></div>
           <div class="udrop">
-            <button v-for="t in toolItems" :key="t.key" class="uitem ib"
-                    :disabled="t.disabled" :title="t.title" @click="runTool(t)">
-              <Icon :name="t.icon" :size="14" :class="{ spin: t.spin }" /> {{ t.label }}
-              <span v-if="t.badge" class="dupbadge">{{ t.badge }}</span></button>
+            <button v-for="tool in toolItems" :key="tool.key" class="uitem ib"
+                    :disabled="tool.disabled" :title="tool.title" @click="runTool(tool)">
+              <Icon :name="tool.icon" :size="14" :class="{ spin: tool.spin }" /> {{ tool.label }}
+              <span v-if="tool.badge" class="dupbadge">{{ tool.badge }}</span></button>
           </div>
         </template>
       </div>
       <button
         v-if="store.user.can_edit"
         class="btn mode-btn ib" :class="{ browse: !store.editMode }"
-        :title="store.editMode ? '編輯模式' : '瀏覽模式'"
+        :title="store.editMode ? t('編輯模式') : t('瀏覽模式')"
         @click="toggleMode"
       ><Icon :name="store.editMode ? 'wrench' : 'eye'" />
-        <span class="mode-text">{{ store.editMode ? '編輯模式' : '瀏覽模式' }}</span></button>
+        <span class="mode-text">{{ store.editMode ? t('編輯模式') : t('瀏覽模式') }}</span></button>
       <!-- The user menu. On a phone only the icon shows (the name has no
            room), but the menu itself stays reachable there. -->
       <div class="umenu">
         <button class="btn ghost ib userbtn" :class="{ on: userMenu }"
-                @click="userMenu = !userMenu" title="帳號">
+                @click="userMenu = !userMenu" :title="t('帳號')">
           <Icon name="user" />
           <span class="who">{{ store.user.username }}
-            <span class="role">{{ store.user.role_name || (store.user.can_edit ? '可編輯' : '唯讀') }}</span></span>
+            <span class="role">{{ store.user.role_name ? ts(store.user.role_name) : (store.user.can_edit ? t('可編輯') : t('唯讀')) }}</span></span>
           <Icon name="chevronDown" :size="12" />
         </button>
         <template v-if="userMenu">
@@ -483,19 +499,27 @@ onMounted(checkAuth)
           <div class="udrop">
             <div class="uname">{{ store.user.username }}</div>
             <button class="uitem ib" @click="openPassword">
-              <Icon name="settings" :size="14" /> 修改密碼</button>
+              <Icon name="settings" :size="14" /> {{ t('修改密碼') }}</button>
             <button class="uitem ib" @click="openTwoFactor">
-              <Icon name="check" :size="14" /> 兩步驟驗證
-              <span v-if="store.user.twofa" class="uon">已啟用</span></button>
+              <Icon name="check" :size="14" /> {{ t('兩步驟驗證') }}
+              <span v-if="store.user.twofa" class="uon">{{ t('已啟用') }}</span></button>
             <button class="uitem ib" @click="openSessions">
-              <Icon name="gauge" :size="14" /> 登入中的裝置</button>
+              <Icon name="gauge" :size="14" /> {{ t('登入中的裝置') }}</button>
+            <!-- Each name in its own language: someone who cannot read the
+                 current one still has to find theirs. -->
+            <div class="usep"></div>
+            <div class="ulabel ib"><Icon name="globe" :size="12" /> {{ t('語言') }}</div>
+            <button v-for="l in LOCALES" :key="l.code" class="uitem ib lang"
+                    :class="{ cur: i18n.locale === l.code }" @click="pickLang(l.code)">
+              <span class="ltick"><Icon v-if="i18n.locale === l.code" name="check" :size="13" /></span>
+              {{ l.name }}</button>
             <!-- Logout lives in here (the user's call) rather than as its own
                  header button: one fewer button on a crowded phone header,
                  and leaving takes a deliberate second tap. Set apart and red
                  so it does not read as one more setting. -->
             <div class="usep"></div>
             <button class="uitem ib out" @click="userMenu = false; logout()">
-              <Icon name="logout" :size="14" /> 登出</button>
+              <Icon name="logout" :size="14" /> {{ t('登出') }}</button>
           </div>
         </template>
       </div>
@@ -516,16 +540,16 @@ onMounted(checkAuth)
         <!-- inbox view: grid on top, archive preview panel at the bottom -->
         <template v-if="store.view === 'inbox'">
           <div class="tabbar">
-            <span class="crumb ib"><Icon name="inbox" /> 待分類</span>
+            <span class="crumb ib"><Icon name="inbox" /> {{ t('待分類') }}</span>
             <button v-if="store.editMode && can('archive')"
                     class="logbtn ib no-mobile"
                     :class="{ on: selMode }" @click="toggleSelMode">
               <Icon :name="selMode ? 'close' : 'checked'" :size="13" />
-              {{ selMode ? '結束選取' : '選取模式' }}
+              {{ selMode ? t('結束選取') : t('選取模式') }}
             </button>
             <button v-if="store.archived.length" class="logbtn ib"
                     @click="showLog = !showLog">
-              本次已歸檔 {{ store.archived.length }} 部
+              {{ t('本次已歸檔 {n} 部', { n: store.archived.length }) }}
               <Icon :name="showLog ? 'chevronDown' : 'chevronRight'" :size="13" />
             </button>
           </div>
@@ -546,14 +570,14 @@ onMounted(checkAuth)
 
             <!-- batch action bar -->
             <div v-if="selMode && batchSel.length" class="batchbar">
-              <span class="bcount">已選 <b>{{ batchSel.length }}</b> 部 · {{ fmtSize(batchBytes) }}</span>
-              <input v-model="batchPerson" list="charlist-batch" placeholder="歸檔到角色…" />
+              <span class="bcount">{{ t('已選 {n} 部', { n: batchSel.length }) }} · {{ fmtSize(batchBytes) }}</span>
+              <input v-model="batchPerson" list="charlist-batch" :placeholder="t('歸檔到角色…')" />
               <datalist id="charlist-batch">
                 <option v-for="c in charNames" :key="c" :value="c" />
               </datalist>
               <button class="btn ib" @click="archiveSelected">
-                <Icon name="check" :size="14" /> 歸檔</button>
-              <button class="btn ghost" @click="inboxGrid?.clearSel(); batchSel = []">取消選取</button>
+                <Icon name="check" :size="14" /> {{ t('歸檔') }}</button>
+              <button class="btn ghost" @click="inboxGrid?.clearSel(); batchSel = []">{{ t('取消選取') }}</button>
             </div>
 
             <PreviewPanel
@@ -576,14 +600,14 @@ onMounted(checkAuth)
               <Icon :name="store.selectedChar.merged ? 'warn' : 'folder'" />
               {{ store.selectedChar.name }}
               <span v-if="store.selectedChar.merged" class="mdrv">
-                （合併視圖 {{ store.selectedChar.drives }}）</span>
+                {{ t('（合併視圖 {drives}）', { drives: store.selectedChar.drives }) }}</span>
             </span>
             <button v-if="charView.videos" class="tab ib"
                     :class="{ on: store.activeTab === 'videos' }"
-                    @click="store.activeTab = 'videos'"><Icon name="film" /> 影片</button>
+                    @click="store.activeTab = 'videos'"><Icon name="film" /> {{ t('影片') }}</button>
             <button v-if="charView.profile" class="tab ib"
                     :class="{ on: store.activeTab === 'profile' }"
-                    @click="store.activeTab = 'profile'"><Icon name="profile" /> 個人資料</button>
+                    @click="store.activeTab = 'profile'"><Icon name="profile" /> {{ t('個人資料') }}</button>
           </div>
           <VideoGrid v-if="shownTab === 'videos'"
                      :root="store.selectedChar.merged ? null : store.selectedChar.path"
@@ -744,6 +768,9 @@ onMounted(checkAuth)
 .uitem.out { color: var(--danger); }
 .uitem:disabled { color: var(--dim); cursor: default; background: none; }
 .uitem .dupbadge { margin-left: 6px; }
+.ulabel { color: var(--dim); font-size: 11px; padding: 4px 8px 2px; gap: 4px; }
+.ltick { display: inline-block; width: 14px; color: var(--accent); }
+.uitem.lang.cur { color: var(--accent); }
 .toolmenu .on { background: var(--hover); }
 
 /* ── tablet width ──────────────────────────────────────────────────────────

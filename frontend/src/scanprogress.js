@@ -7,6 +7,8 @@
 // `total` is null when the size genuinely is not knowable yet — that is not an
 // error state and must not render as 0 or NaN, which is exactly what a naive
 // `done/total*100` produces during the folder walk.
+import { t } from './i18n.js'
+import { ts } from './serverstrings.js'
 
 /** Percentage 0-100, or null when there is nothing honest to draw. */
 export function pct(p) {
@@ -21,13 +23,13 @@ export function pct(p) {
  *  that visibly disagrees with itself is worse than a coarse one. */
 export function fmtEta(sec) {
   if (sec == null || !isFinite(sec) || sec < 0) return ''
-  if (sec < 10) return '快好了'
-  if (sec < 90) return `約 ${Math.round(sec / 5) * 5} 秒`
+  if (sec < 10) return t('快好了')
+  if (sec < 90) return t('約 {n} 秒', { n: Math.round(sec / 5) * 5 })
   const min = Math.round(sec / 60)
-  if (min < 60) return `約 ${min} 分鐘`
+  if (min < 60) return t('約 {n} 分鐘', { n: min })
   const h = Math.floor(min / 60)
   const m = min % 60
-  return m ? `約 ${h} 小時 ${m} 分` : `約 ${h} 小時`
+  return m ? t('約 {h} 小時 {m} 分', { h, m }) : t('約 {h} 小時', { h })
 }
 
 export function fmtCount(n) {
@@ -41,7 +43,7 @@ export function fmtCount(n) {
  *  may still use the estimate; the number must not claim to be one. */
 export function fmtProgressCount(p) {
   if (!p) return ''
-  if (!p.total || p.approx) return `已找到 ${fmtCount(p.done)}`
+  if (!p.total || p.approx) return t('已找到 {n}', { n: fmtCount(p.done) })
   return `${fmtCount(p.done)} / ${fmtCount(p.total)}`
 }
 
@@ -54,8 +56,8 @@ export function fmtProgressLine(p) {
   if (!p) return ''
   if (typeof p === 'string') return p
   const bits = []
-  if (p.phases > 1) bits.push(`階段 ${p.phase}/${p.phases}`)
-  if (p.label) bits.push(p.label)
+  if (p.phases > 1) bits.push(t('階段 {phase}/{phases}', { phase: p.phase, phases: p.phases }))
+  if (p.label) bits.push(ts(p.label))
   bits.push(fmtProgressCount(p))
   const eta = fmtEta(p.eta)
   if (eta) bits.push(eta)

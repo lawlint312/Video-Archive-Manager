@@ -4,6 +4,8 @@ import { api, errText } from '../api'
 import { store } from '../store'
 import Icon from './Icon.vue'
 import { POLICY, passwordProblem } from '../password'
+import { t } from '../i18n'
+import { ts } from '../serverstrings.js'
 
 const users = ref([])
 const roots = ref([])        // every configured root (archive + inbox)
@@ -20,12 +22,12 @@ const form = ref(null)
 // admin just created is choosable here without a code change.
 const roleList = ref([])      // [{ key, name, perms, fixed }]
 const catalogue = ref([])
-function roleLabel(r) { return (roleList.value.find(x => x.key === r) || {}).name || r }
+function roleLabel(r) { return ts((roleList.value.find(x => x.key === r) || {}).name || r) }
 function roleDesc(r) {
-  if (r.fixed) return '全部功能＋設定與帳號管理'
-  if (!r.perms.length) return '只能瀏覽與播放'
-  const label = k => (catalogue.value.find(p => p.key === k) || {}).label || k
-  return r.perms.map(label).join('、')
+  if (r.fixed) return t('全部功能＋設定與帳號管理')
+  if (!r.perms.length) return t('只能瀏覽與播放')
+  const label = k => ts((catalogue.value.find(p => p.key === k) || {}).label || k)
+  return r.perms.map(label).join(t('、'))
 }
 
 async function load() {
@@ -38,7 +40,7 @@ async function load() {
     roots.value = d.roots || []
     inbox.value = d.inbox || []
   } catch (e) {
-    error.value = '載入失敗：' + errText(e)
+    error.value = t('載入失敗：') + errText(e)
   } finally { loading.value = false }
 }
 
@@ -78,12 +80,12 @@ const ipList = () => (form.value?.ips || '')
 
 async function save() {
   const f = form.value
-  if (!scopeOk.value) { error.value = '限制範圍時至少要勾選一個資料夾'; return }
+  if (!scopeOk.value) { error.value = t('限制範圍時至少要勾選一個資料夾'); return }
   busy.value = true
   error.value = ''
   try {
     if (editing.value === 'new') {
-      if (!f.username.trim()) throw { detail: '請輸入帳號' }
+      if (!f.username.trim()) throw { detail: t('請輸入帳號') }
       const problem = passwordProblem(f.password)
       if (problem) throw { detail: problem }
       await api('/api/users', {
@@ -110,30 +112,27 @@ async function save() {
     cancel()
     await load()
   } catch (e) {
-    error.value = e.detail || ('操作失敗：' + (e.status || e))
+    error.value = ts(e.detail) || (t('操作失敗：') + (e.status || e))
   } finally { busy.value = false }
 }
 
 async function setDisabled(u, disabled) {
-  const what = disabled ? '停用' : '啟用'
-  if (disabled && !confirm(`確定停用帳號「${u.username}」？
-`
-      + '帳號與其標記都會保留，但無法再登入，目前的登入也會立刻失效。')) return
+  const failed = disabled ? t('停用失敗：') : t('啟用失敗：')
+  if (disabled && !confirm(t('確定停用帳號「{name}」？\n帳號與其標記都會保留，但無法再登入，目前的登入也會立刻失效。',
+                             { name: u.username }))) return
   busy.value = true
   error.value = ''
   try {
     await api(`/api/users/${u.id}`, { method: 'PATCH', body: JSON.stringify({ disabled }) })
     await load()
   } catch (e) {
-    error.value = e.detail || (what + '失敗：' + (e.status || e))
+    error.value = ts(e.detail) || (failed + (e.status || e))
   } finally { busy.value = false }
 }
 
 async function reset2fa(u) {
-  if (!confirm(`重設「${u.username}」的兩步驟驗證？
-`
-      + '用在對方手機遺失、備用碼也用完的時候。重設後只要知道密碼就能登入，'
-      + '有編輯權限的帳號下次登入時必須重新設定。')) return
+  if (!confirm(t('重設「{name}」的兩步驟驗證？\n用在對方手機遺失、備用碼也用完的時候。重設後只要知道密碼就能登入，有編輯權限的帳號下次登入時必須重新設定。',
+                 { name: u.username }))) return
   busy.value = true
   error.value = ''
   try {
@@ -141,19 +140,19 @@ async function reset2fa(u) {
       body: JSON.stringify({ reset_2fa: true }) })
     await load()
   } catch (e) {
-    error.value = e.detail || ('重設失敗：' + (e.status || e))
+    error.value = ts(e.detail) || (t('重設失敗：') + (e.status || e))
   } finally { busy.value = false }
 }
 
 async function remove(u) {
-  if (!confirm(`確定刪除帳號「${u.username}」？\n該帳號目前的登入狀態也會一併失效。`)) return
+  if (!confirm(t('確定刪除帳號「{name}」？\n該帳號目前的登入狀態也會一併失效。', { name: u.username }))) return
   busy.value = true
   error.value = ''
   try {
     await api(`/api/users/${u.id}`, { method: 'DELETE' })
     await load()
   } catch (e) {
-    error.value = e.detail || ('刪除失敗：' + (e.status || e))
+    error.value = ts(e.detail) || (t('刪除失敗：') + (e.status || e))
   } finally { busy.value = false }
 }
 
@@ -162,54 +161,54 @@ onMounted(load)
 
 <template>
   <div class="wrap">
-    <div v-if="loading" class="msg">載入中…</div>
+    <div v-if="loading" class="msg">{{ t('載入中…') }}</div>
 
     <template v-else>
       <table class="ulist">
         <thead>
-          <tr><th>帳號</th><th>權限</th><th>可存取範圍</th><th></th></tr>
+          <tr><th>{{ t('帳號') }}</th><th>{{ t('權限') }}</th><th>{{ t('可存取範圍') }}</th><th></th></tr>
         </thead>
         <tbody>
           <tr v-for="u in users" :key="u.id"
               :class="{ me: u.id === store.user?.id, off: u.disabled }">
             <td class="un">{{ u.username }}
-              <span v-if="u.id === store.user?.id" class="tag">你</span>
-              <span v-if="u.disabled" class="tag offtag">已停用</span></td>
+              <span v-if="u.id === store.user?.id" class="tag">{{ t('你') }}</span>
+              <span v-if="u.disabled" class="tag offtag">{{ t('已停用') }}</span></td>
             <td>{{ roleLabel(u.role) }}
-              <span v-if="u.twofa" class="tag twofa" title="已啟用兩步驟驗證">2FA</span></td>
+              <span v-if="u.twofa" class="tag twofa" :title="t('已啟用兩步驟驗證')">2FA</span></td>
             <td class="scope">
-              <span v-if="!u.allowed_roots.length" class="all">全部</span>
+              <span v-if="!u.allowed_roots.length" class="all">{{ t('全部') }}</span>
               <span v-else :title="u.allowed_roots.join('\n')">
-                {{ u.allowed_roots.length }} 個資料夾</span>
+                {{ t('{n} 個資料夾', { n: u.allowed_roots.length }) }}</span>
             </td>
             <td class="ops">
-              <button class="lnk" @click="startEdit(u)">編輯</button>
+              <button class="lnk" @click="startEdit(u)">{{ t('編輯') }}</button>
               <!-- Between 編輯 and 刪除 because that is what it is: a way to
                    shut an account down without throwing away its marks and
                    history, and without freeing the name up again. -->
               <button v-if="u.twofa" class="lnk"
-                      title="手機遺失時用：清掉兩步驟驗證，讓對方用密碼登入後重設"
-                      @click="reset2fa(u)">重設 2FA</button>
+                      :title="t('手機遺失時用：清掉兩步驟驗證，讓對方用密碼登入後重設')"
+                      @click="reset2fa(u)">{{ t('重設 2FA') }}</button>
               <button class="lnk" :disabled="u.id === store.user?.id"
-                      :title="u.disabled ? '讓這個帳號可以再次登入'
-                                         : '保留帳號與資料，但不能再登入'"
+                      :title="u.disabled ? t('讓這個帳號可以再次登入')
+                                         : t('保留帳號與資料，但不能再登入')"
                       @click="setDisabled(u, !u.disabled)">
-                {{ u.disabled ? '啟用' : '停用' }}</button>
+                {{ u.disabled ? t('啟用') : t('停用') }}</button>
               <button class="lnk del" :disabled="u.id === store.user?.id"
-                      @click="remove(u)">刪除</button>
+                      @click="remove(u)">{{ t('刪除') }}</button>
             </td>
           </tr>
         </tbody>
       </table>
 
       <button v-if="!editing" class="btn addbtn ib" @click="startNew">
-        <Icon name="plus" :size="14" /> 新增帳號</button>
+        <Icon name="plus" :size="14" /> {{ t('新增帳號') }}</button>
 
       <!-- create / edit form -->
       <div v-if="editing" class="form">
-        <div class="fhead">{{ editing === 'new' ? '新增帳號' : `編輯「${form.username}」` }}</div>
+        <div class="fhead">{{ editing === 'new' ? t('新增帳號') : t('編輯「{name}」', { name: form.username }) }}</div>
 
-        <label class="lab">帳號</label>
+        <label class="lab">{{ t('帳號') }}</label>
         <!-- autocomplete off + new-password below: this form sets credentials
              for SOMEONE ELSE, but a text field followed by a password field
              reads to the browser as a login form. Once the admin's own login
@@ -220,42 +219,40 @@ onMounted(load)
         <input v-model="form.username" :disabled="editing !== 'new'"
                name="vam-account-name" autocomplete="off"
                autocapitalize="off" spellcheck="false"
-               placeholder="使用者名稱" />
+               :placeholder="t('使用者名稱')" />
 
-        <label class="lab">{{ editing === 'new' ? '密碼' : '新密碼（留空表示不變更）' }}</label>
+        <label class="lab">{{ editing === 'new' ? t('密碼') : t('新密碼（留空表示不變更）') }}</label>
         <input v-model="form.password" type="password"
                name="vam-account-new-password" autocomplete="new-password"
-               placeholder="8 字元以上，含大小寫英文與數字" />
-        <div class="hint">{{ POLICY }}</div>
+               :placeholder="t('8 字元以上，含大小寫英文與數字')" />
+        <div class="hint">{{ t(POLICY) }}</div>
 
-        <label class="lab">權限</label>
+        <label class="lab">{{ t('權限') }}</label>
         <div class="roles">
           <label v-for="r in roleList" :key="r.key" class="role"
                  :class="{ on: form.role === r.key }">
             <input type="radio" :value="r.key" v-model="form.role" />
-            <b>{{ r.name }}</b><span>{{ roleDesc(r) }}</span>
+            <b>{{ ts(r.name) }}</b><span>{{ roleDesc(r) }}</span>
           </label>
-          <div class="hint">要調整各組能用哪些功能，請到「權限組」分頁。</div>
+          <div class="hint">{{ t('要調整各組能用哪些功能，請到「權限組」分頁。') }}</div>
         </div>
 
-        <label class="lab">允許登入的來源 IP</label>
+        <label class="lab">{{ t('允許登入的來源 IP') }}</label>
         <textarea v-model="form.ips" rows="3" class="ipbox"
-                  placeholder="留空 = 不限制&#10;192.168.1.0/24&#10;203.0.113.5"></textarea>
+                  :placeholder="t('留空 = 不限制') + '\n192.168.1.0/24\n203.0.113.5'"></textarea>
         <div class="hint">
-          一行一筆，可用單一位址或網段（CIDR）。<b>留空表示不限制。</b>
-          每次請求都會檢查，不只登入時。
-          <br>提醒：家用網路的 IP 會因 DHCP 變動，而且同網段的人有辦法偽造來源位址
-          —— 這一項擋得住「別台裝置誤用這個帳號」，擋不住有心人。
-          限制自己的帳號時，系統會拒絕一份不含你目前位址的清單。
+          {{ t('一行一筆，可用單一位址或網段（CIDR）。') }}<b>{{ t('留空表示不限制。') }}</b>
+          {{ t('每次請求都會檢查，不只登入時。') }}
+          <br>{{ t('提醒：家用網路的 IP 會因 DHCP 變動，而且同網段的人有辦法偽造來源位址 —— 這一項擋得住「別台裝置誤用這個帳號」，擋不住有心人。限制自己的帳號時，系統會拒絕一份不含你目前位址的清單。') }}
         </div>
 
-        <label class="lab">可存取的資料夾</label>
+        <label class="lab">{{ t('可存取的資料夾') }}</label>
         <label class="chk">
           <input type="checkbox" v-model="form.scoped" />
-          限制此帳號只能存取部分資料夾
+          {{ t('限制此帳號只能存取部分資料夾') }}
         </label>
         <div v-if="!form.scoped" class="hint">
-          未限制 — 可存取設定中所有的歸檔根目錄與待分類資料夾。
+          {{ t('未限制 — 可存取設定中所有的歸檔根目錄與待分類資料夾。') }}
         </div>
         <div v-else class="rootbox">
           <label v-for="r in roots" :key="r" class="rootrow">
@@ -263,20 +260,20 @@ onMounted(load)
                    @change="togglePick(r)" />
             <span class="kind" :class="{ ib: true }">
               <Icon :name="isInbox(r) ? 'inbox' : 'folder'" :size="12" />
-              {{ isInbox(r) ? '待分類' : '歸檔' }}</span>
+              {{ isInbox(r) ? t('待分類') : t('歸檔') }}</span>
             <span class="rp">{{ r }}</span>
           </label>
-          <div v-if="!roots.length" class="hint">（設定裡還沒有任何資料夾）</div>
+          <div v-if="!roots.length" class="hint">{{ t('（設定裡還沒有任何資料夾）') }}</div>
         </div>
 
         <div v-if="error" class="err">{{ error }}</div>
 
         <div class="frow">
           <button class="btn" :disabled="busy" @click="save">
-            {{ busy ? '儲存中…' : '儲存' }}</button>
-          <button class="btn ghost" :disabled="busy" @click="cancel">取消</button>
+            {{ busy ? t('儲存中…') : t('儲存') }}</button>
+          <button class="btn ghost" :disabled="busy" @click="cancel">{{ t('取消') }}</button>
           <span v-if="editing !== 'new'" class="note">
-            變更權限或密碼會讓該帳號目前的登入失效，需要重新登入。</span>
+            {{ t('變更權限或密碼會讓該帳號目前的登入失效，需要重新登入。') }}</span>
         </div>
       </div>
 

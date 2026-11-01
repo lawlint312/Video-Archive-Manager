@@ -11,6 +11,9 @@ import ScanProgress from './ScanProgress.vue'
 import ScopePicker from './ScopePicker.vue'
 import Icon from './Icon.vue'
 import DupHistory from './DupHistory.vue'
+import { isClean } from '../imgkeeper.js'
+import { t } from '../i18n'
+import { ts } from '../serverstrings.js'
 
 
 const d = store.imgdedup
@@ -35,7 +38,7 @@ async function openHist(id) {
     showHistory.value = false
     scopeOpen.value = false
     filter.value = 'all'
-  } catch (e) { error.value = '開啟紀錄失敗：' + errText(e) }
+  } catch (e) { error.value = t('開啟紀錄失敗：') + errText(e) }
 }
 const picker = ref(null)
 const selected = ref([])
@@ -55,7 +58,7 @@ const distance = ref(d.maxDistance)
 
 async function start() {
   if (!selected.value.length) {
-    error.value = '請至少選擇一個資料夾'
+    error.value = t('請至少選擇一個資料夾')
     return
   }
   error.value = ''
@@ -95,7 +98,7 @@ const viewing = ref(null)
 const executing = ref(false)
 
 async function delOne(g, f) {
-  if (!confirm(`確定要永久刪除？\n\n${f.name}`)) return
+  if (!confirm(t('確定要永久刪除？') + `\n\n${f.name}`)) return
   f.error = null
   try {
     if (viewing.value?.path === f.path) viewing.value = null
@@ -106,7 +109,7 @@ async function delOne(g, f) {
     g.touched = true
     rescore(g)
   } catch (e) {
-    f.error = e.detail || `刪除失敗（${e.status}）`
+    f.error = ts(e.detail) || t('刪除失敗（{status}）', { status: e.status })
   }
 }
 
@@ -121,7 +124,7 @@ function keeperFirst(g) {
 async function keepOne(g, keep) {
   const doomed = g.files.filter(f => f !== keep && !f.deleted)
   if (!doomed.length) return
-  if (!confirm(`保留：\n  ${keep.name}\n\n刪除：\n` +
+  if (!confirm(t('保留：') + `\n  ${keep.name}\n\n` + t('刪除：') + '\n' +
                doomed.map(f => '  ' + f.name).join('\n'))) return
   await runDelete(doomed.map(f => f.path), [g])
 }
@@ -139,12 +142,12 @@ async function executeBatch() {
   const p = plan.value
   if (!p.paths.length) return
   const warn = risk.value.level === 'safe' ? ''
-    : `\n⚠ 門檻 ${batchMax.value}：${risk.value.text}，建議先逐組看過再批次。\n`
-  if (!confirm(`將處理 ${p.groups.length} 組（相似距離 ≤ ${batchMax.value}），` +
-               `每組保留建議的那張，刪除其餘 ${p.paths.length} 張（約 ${fmtSize(p.bytes)}）。\n` +
+    : '\n' + t('⚠ 門檻 {n}：{risk}，建議先逐組看過再批次。', { n: batchMax.value, risk: risk.value.text }) + '\n'
+  if (!confirm(t('將處理 {groups} 組（相似距離 ≤ {max}），每組保留建議的那張，刪除其餘 {n} 張（約 {size}）。',
+                 { groups: p.groups.length, max: batchMax.value, n: p.paths.length, size: fmtSize(p.bytes) }) + '\n' +
                warn +
-               (p.undecided ? `\n另有 ${p.undecided} 組無法判斷該留哪張，不會處理。\n` : '') +
-               `\n永久刪除，不會進資源回收筒。確定執行？`)) return
+               (p.undecided ? '\n' + t('另有 {n} 組無法判斷該留哪張，不會處理。', { n: p.undecided }) + '\n' : '') +
+               '\n' + t('永久刪除，不會進資源回收筒。確定執行？'))) return
   await runDelete(p.paths, p.groups)
 }
 
@@ -168,7 +171,7 @@ async function runDelete(paths, affected) {
       }
     }
   } catch (e) {
-    alert('刪除失敗：' + errText(e))
+    alert(t('刪除失敗：') + errText(e))
   } finally { executing.value = false }
 }
 
@@ -192,13 +195,13 @@ onMounted(async () => {
       <div v-if="!scopeOpen && !showHistory" class="barrow">
         <button class="scopebar" @click="reopenScope">
         <Icon name="chevronRight" :size="13" />
-        範圍：待分類 {{ inboxOn }} · 歸檔 {{ charsOn }}
-        <span class="thrtag">門檻 {{ distance }}</span>
-        <span v-if="d.savedAt" class="oldtag">上次掃描 {{ fmtWhen(d.savedAt) }}</span>
-        <span class="chg">重新掃描</span>
+        {{ t('範圍：待分類 {inbox} · 歸檔 {chars}', { inbox: inboxOn, chars: charsOn }) }}
+        <span class="thrtag">{{ t('門檻 {n}', { n: distance }) }}</span>
+        <span v-if="d.savedAt" class="oldtag">{{ t('上次掃描 {time}', { time: fmtWhen(d.savedAt) }) }}</span>
+        <span class="chg">{{ t('重新掃描') }}</span>
         </button>
-        <button class="histbtn" title="之前的掃描報告" @click="showHistory = true">
-          <Icon name="history" :size="13" /> 歷史紀錄</button>
+        <button class="histbtn" :title="t('之前的掃描報告')" @click="showHistory = true">
+          <Icon name="history" :size="13" /> {{ t('歷史紀錄') }}</button>
       </div>
 
       <DupHistory v-if="showHistory" class="histpane" kind="image"
@@ -215,22 +218,22 @@ onMounted(async () => {
              read as a separate step rather than as "go" for these settings. -->
         <div class="opts">
           <label class="opt thr">
-            相似門檻
+            {{ t('相似門檻') }}
             <input type="range" min="0" max="30" v-model.number="distance"
                    :disabled="d.running" />
             <b>{{ distance }}</b> / 256
           </label>
           <span class="hint">
-            {{ distance <= d.safeDistance ? '嚴格（實測無誤判）'
-               : distance <= 19 ? '中等（約 1 成需人工確認）'
-               : '寬鬆（約 3 成需人工確認）' }}
+            {{ distance <= d.safeDistance ? t('嚴格（實測無誤判）')
+               : distance <= 19 ? t('中等（約 1 成需人工確認）')
+               : t('寬鬆（約 3 成需人工確認）') }}
           </span>
           <span class="spacer"></span>
           <button class="histbtn" :disabled="d.running" @click="showHistory = true">
-            <Icon name="history" :size="13" /> 歷史紀錄</button>
+            <Icon name="history" :size="13" /> {{ t('歷史紀錄') }}</button>
           <button class="btn" :disabled="d.running || !selected.length"
                   @click="start">
-            {{ d.running ? '掃描中…' : '開始掃描' }}
+            {{ d.running ? t('掃描中…') : t('開始掃描') }}
           </button>
         </div>
         <div v-if="error" class="err">{{ error }}</div>
@@ -242,7 +245,7 @@ onMounted(async () => {
       <div v-if="d.partial && !d.running && groups.length && !scopeOpen && !showHistory"
            class="partial ib">
         <Icon name="warn" :size="14" />
-        這份報告來自<b>中途停止</b>的掃描，只涵蓋已完成的部分；要完整結果請重新掃描。
+        {{ t('這份報告來自') }}<b>{{ t('中途停止') }}</b>{{ t('的掃描，只涵蓋已完成的部分；要完整結果請重新掃描。') }}
       </div>
 
       <!-- ── report ── -->
@@ -256,38 +259,37 @@ onMounted(async () => {
         <div class="bar">
           <div class="filters">
             <button class="chip" :class="{ on: filter === 'all' }"
-                    @click="filter = 'all'">全部 {{ liveGroups.length }}</button>
+                    @click="filter = 'all'">{{ t('全部 {n}', { n: liveGroups.length }) }}</button>
             <button class="chip" :class="{ on: filter === 'exact' }"
-                    @click="filter = 'exact'">完全相同 {{ exactGroups.length }}</button>
+                    @click="filter = 'exact'">{{ t('完全相同 {n}', { n: exactGroups.length }) }}</button>
             <button class="chip" :class="{ on: filter === 'similar' }"
-                    @click="filter = 'similar'">視覺相似
-              {{ liveGroups.length - exactGroups.length }}</button>
+                    @click="filter = 'similar'">{{ t('視覺相似 {n}', { n: liveGroups.length - exactGroups.length }) }}</button>
             <button class="chip" :class="{ on: filter === 'manual' }"
-                    @click="filter = 'manual'">需人工判斷</button>
+                    @click="filter = 'manual'">{{ t('需人工判斷') }}</button>
           </div>
           <span class="spacer"></span>
-          <span class="hint">可釋出約 {{ fmtSize(reclaimable) }}</span>
+          <span class="hint">{{ t('可釋出約 {size}', { size: fmtSize(reclaimable) }) }}</span>
         </div>
         <!-- the batch: how far it reaches is the user's call, every time.
              Without the delete permission it, and every delete below, would
              only be refused by the server: say so once instead. -->
-        <div v-if="!can('delete')" class="batch noperm">這個帳號沒有「刪除檔案」的權限：可以看報告、播放比對，刪除要由有權限的帳號來做</div>
+        <div v-if="!can('delete')" class="batch noperm">{{ t('這個帳號沒有「刪除檔案」的權限：可以看報告、播放比對，刪除要由有權限的帳號來做') }}</div>
         <div v-else class="batch">
           <label class="opt thr">
-            批次門檻
+            {{ t('批次門檻') }}
             <input type="range" min="0" :max="BATCH_MAX" v-model.number="batchMax"
                    :disabled="executing" />
             <b>{{ batchMax }}</b>
           </label>
           <span class="risk" :class="risk.level">{{ risk.text }}</span>
           <span class="hint">
-            {{ plan.groups.length }} 組 · 刪除 {{ plan.paths.length }} 張 · 約 {{ fmtSize(plan.bytes) }}<template
-              v-if="plan.undecided">（另有 {{ plan.undecided }} 組無法判斷，不處理）</template>
+            {{ t('{groups} 組 · 刪除 {n} 張 · 約 {size}', { groups: plan.groups.length, n: plan.paths.length, size: fmtSize(plan.bytes) }) }}<template
+              v-if="plan.undecided">{{ t('（另有 {n} 組無法判斷，不處理）', { n: plan.undecided }) }}</template>
           </span>
           <span class="spacer"></span>
           <button class="btn sm" :disabled="executing || !plan.paths.length"
                   @click="executeBatch">
-            {{ executing ? '刪除中…' : `執行建議（${plan.groups.length} 組）` }}
+            {{ executing ? t('刪除中…') : t('執行建議（{n} 組）', { n: plan.groups.length }) }}
           </button>
         </div>
 
@@ -296,12 +298,12 @@ onMounted(async () => {
                :class="{ touched: g.touched }">
             <div class="ghead">
               <span class="tag" :class="isExactOnly(g) ? 't1' : 't2'">
-                {{ isExactOnly(g) ? '完全相同' : `相似 ${g.distance}/256` }}
+                {{ isExactOnly(g) ? t('完全相同') : t('相似 {n}/256', { n: g.distance }) }}
               </span>
               <span v-if="g.folder" class="folder">{{ g.folder }}</span>
-              <span v-if="!g.certain" class="warn">無法判斷該留哪張</span>
+              <span v-if="!g.certain" class="warn">{{ t('無法判斷該留哪張') }}</span>
               <span class="spacer"></span>
-              <span class="hint">{{ g.files.filter(f => !f.deleted).length }} 張</span>
+              <span class="hint">{{ t('{n} 張', { n: g.files.filter(f => !f.deleted).length }) }}</span>
             </div>
             <div class="shots">
               <template v-for="f in keeperFirst(g)" :key="f.path">
@@ -313,8 +315,8 @@ onMounted(async () => {
                        wide and the badge used to take its width from the two
                        buttons beside it, so the keeper's buttons wrapped and
                        came out a different size from every other card's. -->
-                  <span v-if="f.path === g.keeper" class="badge">建議保留<template
-                        v-if="g.why"> · {{ g.why }}</template></span>
+                  <span v-if="f.path === g.keeper" class="badge">{{ t('建議保留') }}<template
+                        v-if="g.why"> · {{ t(g.why) }}</template></span>
                   <div class="meta">
                     <div class="nm" :title="f.path">{{ f.name }}</div>
                     <div class="sm">
@@ -324,25 +326,25 @@ onMounted(async () => {
                     <!-- what the scan measured, so a wrong call is visible
                          on the card instead of only in the suggestion -->
                     <div v-if="wmLabel(f)" class="wm"
-                         :class="{ clean: wmLabel(f) === '無浮水印' }">{{ wmLabel(f) }}</div>
+                         :class="{ clean: isClean(f) }">{{ wmLabel(f) }}</div>
                     <div v-if="f.error" class="err">{{ f.error }}</div>
                   </div>
                   <div v-if="can('delete')" class="acts">
-                    <button class="btn ghost xs" @click="keepOne(g, f)">留這張</button>
-                    <button class="btn xs del" @click="delOne(g, f)">刪除</button>
+                    <button class="btn ghost xs" @click="keepOne(g, f)">{{ t('留這張') }}</button>
+                    <button class="btn xs del" @click="delOne(g, f)">{{ t('刪除') }}</button>
                   </div>
                 </div>
               </template>
             </div>
           </div>
-          <div v-if="!shown.length" class="empty">這個篩選沒有項目。</div>
+          <div v-if="!shown.length" class="empty">{{ t('這個篩選沒有項目。') }}</div>
         </div>
       </template>
       <!-- Not under the picker: it took the room the settings row needed and
            pushed 開始掃描 out of sight. -->
       <div v-else-if="!d.running && d.groups !== null && !scopeOpen && !showHistory"
            class="empty">
-        沒有發現重複的圖片。
+        {{ t('沒有發現重複的圖片。') }}
       </div>
 
     <!-- full-size look, because a thumbnail cannot settle "are these the same?" -->

@@ -15,6 +15,7 @@ import { cellAt, cellTime, framesOn, canAdd, sortSegments, containBox, cellBox }
 import { store } from '../store'
 import { fmtEta } from '../scanprogress'
 import Icon from './Icon.vue'
+import { t } from '../i18n'
 import { swipeOutcome } from '../swipenav'
 import { screen } from '../mobile'
 
@@ -249,11 +250,11 @@ const overlay = computed(() => {
   const out = []
   const inCell = cellOf(markIn.value)
   const outCell = cellOf(markOut.value)
-  if (inCell != null) out.push({ k: 'in', label: '起', ...boxFor(inCell) })
-  if (outCell != null) out.push({ k: 'out', label: '迄', ...boxFor(outCell) })
+  if (inCell != null) out.push({ k: 'in', label: t('起'), ...boxFor(inCell) })
+  if (outCell != null) out.push({ k: 'out', label: t('迄'), ...boxFor(outCell) })
   for (const s of segments.value) {
-    for (const [t, label] of [[s.start, '起'], [s.end, '迄']]) {
-      const c = cellOf(t)
+    for (const [at, label] of [[s.start, t('起')], [s.end, t('迄')]]) {
+      const c = cellOf(at)
       if (c != null) out.push({ k: 'done', label, ...boxFor(c) })
     }
   }
@@ -510,10 +511,10 @@ onMounted(async () => {
   try {
     info.value = await api(
       `/api/sheet/info?path=${encodeURIComponent(props.video.path)}`)
-    if (!info.value.total) error.value = '這個檔案讀不到時長，無法產生縮圖表'
+    if (!info.value.total) error.value = t('這個檔案讀不到時長，無法產生縮圖表')
     else pollProgress()
   } catch (e) {
-    error.value = '無法讀取影片資訊：' + errText(e)
+    error.value = t('無法讀取影片資訊：') + errText(e)
     loading.value = false
   }
 })
@@ -542,8 +543,8 @@ onBeforeUnmount(() => {
       <div class="head">
         <span class="nm" :title="video.name">{{ video.name }}</span>
         <span class="spacer"></span>
-        <button class="btn ghost" title="關閉" @click="emit('close')">
-          <Icon name="close" :size="14" /><span class="no-mobile">&nbsp;關閉</span>
+        <button class="btn ghost" :title="t('關閉')" @click="emit('close')">
+          <Icon name="close" :size="14" /><span class="no-mobile">&nbsp;{{ t('關閉') }}</span>
         </button>
       </div>
 
@@ -563,8 +564,8 @@ onBeforeUnmount(() => {
           <img :src="src" :class="{ zoom, hidden: cellMode }" draggable="false" ref="imgEl"
                @load="onLoad" @error="onLoad"
                :title="marking
-                 ? '點一格設起點，再點後面一格設終點（放大用右下的按鈕或 Z）'
-                 : (zoom ? '拖曳可移動，點一下縮回視窗大小' : '點一下放大該處')"
+                 ? t('點一格設起點，再點後面一格設終點（放大用右下的按鈕或 Z）')
+                 : (zoom ? t('拖曳可移動，點一下縮回視窗大小') : t('點一下放大該處'))"
                @click="onClick" />
           <div v-if="marking && overlayStyle" class="cells" :style="overlayStyle">
             <div v-for="(o, i) in overlay" :key="i" class="cell" :class="o.k"
@@ -580,7 +581,7 @@ onBeforeUnmount(() => {
                  @click="openCell(c)"></div>
           </div>
           <div v-if="loading" class="busy">
-            <Icon name="spinner" :size="18" class="spin" /> 產生中…
+            <Icon name="spinner" :size="18" class="spin" /> {{ t('產生中…') }}
           </div>
         </div>
         <button v-if="!cellMode" class="nav right" :disabled="index >= total - 1" @click="go(1)">
@@ -590,40 +591,40 @@ onBeforeUnmount(() => {
 
       <!-- Only in 剪輯模式. Outside it the viewer is exactly what it was. -->
       <div v-if="info && marking" class="pick">
-        <span class="lead"><Icon name="scissors" :size="12" /> 點格子選取</span>
+        <span class="lead"><Icon name="scissors" :size="12" /> {{ t('點格子選取') }}</span>
         <span class="mk" :class="{ set: markIn != null }">
-          起 {{ markIn == null ? '—' : hms(markIn) }}</span>
+          {{ t('起') }} {{ markIn == null ? '—' : hms(markIn) }}</span>
         <span class="mk" :class="{ set: markOut != null }">
-          迄 {{ markOut == null ? '—' : hms(markOut) }}</span>
+          {{ t('迄') }} {{ markOut == null ? '—' : hms(markOut) }}</span>
         <button class="btn sm" :disabled="!canAddSeg" @click="addSegment">
-          加入片段</button>
-        <button class="lnk" v-if="markIn != null" @click="clearMarks">清除</button>
+          {{ t('加入片段') }}</button>
+        <button class="lnk" v-if="markIn != null" @click="clearMarks">{{ t('清除') }}</button>
         <span class="spacer"></span>
-        <span class="dim">每格 {{ info.interval }} 秒，之後可在剪輯視窗微調</span>
+        <span class="dim">{{ t('每格 {n} 秒，之後可在剪輯視窗微調', { n: info.interval }) }}</span>
       </div>
 
       <div v-if="info && marking && segments.length" class="segs">
         <span v-for="s in segments" :key="s.id" class="seg">
           {{ hms(s.start) }} – {{ hms(s.end) }}
-          <button class="x" title="移除" @click="removeSegment(s.id)">×</button>
+          <button class="x" :title="t('移除')" @click="removeSegment(s.id)">×</button>
         </span>
         <span class="spacer"></span>
         <button class="btn sm go" @click="toClip">
-          <Icon name="scissors" :size="12" /> 送到剪輯微調（{{ segments.length }} 段）
+          <Icon name="scissors" :size="12" /> {{ t('送到剪輯微調（{n} 段）', { n: segments.length }) }}
         </button>
       </div>
 
       <div v-if="info" class="foot">
-        <span>第 <b>{{ index + 1 }}</b> / {{ total }} 張</span>
+        <span>{{ t('第') }} <b>{{ index + 1 }}</b> {{ t('/ {total} 張', { total }) }}</span>
         <span class="dim">· {{ span }}</span>
-        <span class="dim">· 每 {{ info.interval }} 秒一格，{{ info.per_sheet }} 格</span>
+        <span class="dim">· {{ t('每 {n} 秒一格，{cells} 格', { n: info.interval, cells: info.per_sheet }) }}</span>
         <span class="spacer"></span>
         <button v-if="!cellMode" class="lnk" @click="toggleZoom()">
-          {{ zoom ? '縮回視窗大小' : '原尺寸檢視' }}
+          {{ zoom ? t('縮回視窗大小') : t('原尺寸檢視') }}
         </button>
-        <span v-if="cellMode" class="dim">左右滑動翻頁 · 點格子放大</span>
-        <span v-else-if="screen.mobile" class="dim">左右滑動翻頁 · 點一下放大</span>
-        <span v-else class="dim">← → 翻頁 · Z 放大 · 放大後可拖曳 · Esc 關閉</span>
+        <span v-if="cellMode" class="dim">{{ t('左右滑動翻頁 · 點格子放大') }}</span>
+        <span v-else-if="screen.mobile" class="dim">{{ t('左右滑動翻頁 · 點一下放大') }}</span>
+        <span v-else class="dim">{{ t('← → 翻頁 · Z 放大 · 放大後可拖曳 · Esc 關閉') }}</span>
       </div>
 
       <!-- The whole set's progress, below the page counter. Hidden once every
@@ -632,7 +633,7 @@ onBeforeUnmount(() => {
       <div v-if="showProgress" class="prog">
         <div class="bar"><i :style="{ width: progPct + '%' }"></i></div>
         <span class="ptext">{{ progText }}</span>
-        <span v-if="etaText" class="dim">· 剩餘 {{ etaText }}</span>
+        <span v-if="etaText" class="dim">· {{ t('剩餘 {eta}', { eta: etaText }) }}</span>
       </div>
     </div>
 
@@ -642,20 +643,20 @@ onBeforeUnmount(() => {
          @pointercancel="onFocusCancel" @click="onFocusClick">
       <div class="fhead">
         <button class="btn ghost" @click.stop="closeFocus">
-          <Icon name="chevronLeft" :size="16" /> 返回</button>
+          <Icon name="chevronLeft" :size="16" /> {{ t('返回') }}</button>
         <span class="ftime">{{ hms(focusTime) }}</span>
         <span class="spacer"></span>
-        <span class="dim">第 {{ focusOrdinal }} / {{ info.frames }} 格</span>
+        <span class="dim">{{ t('第 {n} / {total} 格', { n: focusOrdinal, total: info.frames }) }}</span>
       </div>
       <div class="fimg">
         <div class="tile big" :style="tileStyle(focus)"></div>
         <div v-if="loading" class="busy">
-          <Icon name="spinner" :size="18" class="spin" /> 產生中…
+          <Icon name="spinner" :size="18" class="spin" /> {{ t('產生中…') }}
         </div>
       </div>
       <button class="btn playbtn" @click.stop="emit('play', focusTime)">
-        <Icon name="play" :size="16" /> 從 {{ hms(focusTime) }} 播放</button>
-      <div class="dim fhint">左右滑動換一格 · 點畫面返回</div>
+        <Icon name="play" :size="16" /> {{ t('從 {time} 播放', { time: hms(focusTime) }) }}</button>
+      <div class="dim fhint">{{ t('左右滑動換一格 · 點畫面返回') }}</div>
     </div>
   </div>
 </template>

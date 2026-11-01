@@ -12,6 +12,8 @@
 import { api, errText } from './api.js'
 import { setBusy, setStatus } from './store.js'
 import { fmtProgressLine } from './scanprogress.js'
+import { t } from './i18n.js'
+import { ts } from './serverstrings.js'
 
 // A restart measured on this machine is 5–15 s from the old process gone to
 // the new one answering; the scans are resumed a moment after that. 90 s is
@@ -52,7 +54,7 @@ export function fmtJobProgress(p) {
   const total = p.total ?? p.count
   if (p.index && total) bits.push(`${p.index}/${total}`)
   if (p.name) bits.push(p.name)
-  if (p.stage) bits.push(p.stage)
+  if (p.stage) bits.push(ts(p.stage))
   if (typeof p.pct === 'number' && p.pct > 0) bits.push(`${Math.round(p.pct * 100)}%`)
   else if (p.done && p.total && p.size == null && !p.index) {
     bits.push(`${Math.round(p.done / p.total * 100)}%`)   // a move's bytes
@@ -62,16 +64,16 @@ export function fmtJobProgress(p) {
 
 /** The status-bar line once a continued job has ended. */
 export function jobSummary(label, j) {
-  if (j.status === 'error') return { text: `${label}失敗：${j.error || '未知的錯誤'}`, kind: 'warn' }
+  if (j.status === 'error') return { text: t('{label}失敗：{error}', { label, error: ts(j.error) || t('未知的錯誤') }), kind: 'warn' }
   const r = j.result || {}
   const ok = r.converted || r.done
   const failed = Array.isArray(r.failed) ? r.failed : []
   if (Array.isArray(ok)) {
-    const head = `${label}：完成 ${ok.length} 個`
+    const head = t('{label}：完成 {n} 個', { label, n: ok.length })
     if (!failed.length) return { text: head, kind: 'ok' }
-    return { text: `${head}，失敗 ${failed.length} 個（${failed[0].error}）`, kind: 'warn' }
+    return { text: head + t('，失敗 {n} 個（{error}）', { n: failed.length, error: failed[0].error }), kind: 'warn' }
   }
-  return { text: `${label}：已完成`, kind: 'ok' }
+  return { text: t('{label}：已完成', { label }), kind: 'ok' }
 }
 
 /** Follow a job continued from the 中斷的工作 dialog until it ends. */

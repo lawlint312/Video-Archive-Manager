@@ -130,8 +130,24 @@ def parse_profile(html: str) -> dict:
 # Store the date of birth and derive. Many entries are year-only
 # ("2000-??-??"), which can still give an approximate age.
 
+# Typed by hand, a partly known birthday is "1996" or "1996-03", not
+# "1996-??-??". Accepted with a missing tail, single-digit parts and / or . as
+# the separator, and stored in the one long form everything else reads.
+_SHORT_DOB = re.compile(r"^(\d{4})(?:[-/.](\?\?|\d{1,2})(?:[-/.](\?\?|\d{1,2}))?)?$")
+
+
+def normalize_dob(dob: str) -> str:
+    """"1996" -> "1996-??-??", "1996/3" -> "1996-03-??"; anything else as given."""
+    s = (dob or "").strip()
+    m = _SHORT_DOB.match(s)
+    if not m:
+        return s
+    parts = [p if p == "??" else p.zfill(2) for p in (m.group(2) or "??", m.group(3) or "??")]
+    return "-".join([m.group(1), *parts])
+
+
 def parse_dob(dob: str) -> Tuple[Optional[int], Optional[int], Optional[int]]:
-    m = re.match(r"^(\d{4})-(\?\?|\d{2})-(\?\?|\d{2})$", (dob or "").strip())
+    m = re.match(r"^(\d{4})-(\?\?|\d{2})-(\?\?|\d{2})$", normalize_dob(dob))
     if not m:
         return (None, None, None)
     y = int(m.group(1))
@@ -158,6 +174,11 @@ def age_from_dob(dob: str, today: Optional[_dt.date] = None) -> Optional[dict]:
     if mo and d:
         age = today.year - y - ((today.month, today.day) < (mo, d))
         return {"age": age, "approx": False}
+    if mo and today.month != mo:
+        # month known: only within the birth month itself is it a guess
+        return {"age": today.year - y - (today.month < mo), "approx": False}
+    if mo:
+        return {"age": today.year - y, "approx": True}
     # year only: the true age is one of two values, so say "about"
     return {"age": today.year - y, "approx": True}
 
@@ -401,7 +422,7 @@ def clean_profile(data: dict) -> dict:
     for k in PROFILE_KEYS:
         v = (data or {}).get(k)
         if isinstance(v, str) and v.strip():
-            out[k] = v.strip()[:80]
+            out[k] = (normalize_dob(v) if k == "dob" else v.strip())[:80]
     return out
 
 

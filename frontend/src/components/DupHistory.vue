@@ -9,12 +9,15 @@
 import { ref, onMounted } from 'vue'
 import { api, errText } from '../api'
 import Icon from './Icon.vue'
+import { t } from '../i18n'
+import { ts } from '../serverstrings.js'
 
 const props = defineProps({
   kind: { type: String, required: true },          // 'video' | 'image'
   current: { type: String, default: null },        // id on screen, if any
   endpoint: { type: String, default: '/api/dedup/history' },
-  unit: { type: String, default: '組' },           // what "found N" counts
+  // what "found N" counts: '組' (groups) or '個' (files) — picks the wording
+  unit: { type: String, default: '組' },
 })
 const emit = defineEmits(['open', 'close'])
 
@@ -29,17 +32,17 @@ async function load() {
     const r = await api(`${props.endpoint}?kind=${props.kind}`)
     entries.value = r.entries
     keep.value = r.keep
-  } catch (e) { error.value = '讀取失敗：' + errText(e); entries.value = [] }
+  } catch (e) { error.value = t('讀取失敗：') + errText(e); entries.value = [] }
 }
 onMounted(load)
 
 async function remove(e) {
-  if (!confirm(`刪除 ${when(e.at)} 這筆掃描紀錄？\n\n只會刪除紀錄本身，不會動到任何影片或照片。`)) return
+  if (!confirm(t('刪除 {time} 這筆掃描紀錄？\n\n只會刪除紀錄本身，不會動到任何影片或照片。', { time: when(e.at) }))) return
   busy.value = e.id
   try {
     await api(`${props.endpoint}/${props.kind}/${e.id}`, { method: 'DELETE' })
     entries.value = entries.value.filter(x => x.id !== e.id)
-  } catch (err) { error.value = '刪除失敗：' + errText(err) }
+  } catch (err) { error.value = t('刪除失敗：') + errText(err) }
   finally { busy.value = '' }
 }
 
@@ -51,53 +54,55 @@ function when(t) {
 }
 function scope(e) {
   const r = e.roots || []
-  if (!r.length) return '（範圍不在你的權限內）'
-  return r.slice(0, 3).join('、') + (r.length > 3 ? ` 等 ${r.length} 個資料夾` : '')
+  if (!r.length) return t('（範圍不在你的權限內）')
+  return r.slice(0, 3).join(t('、')) + (r.length > 3 ? t(' 等 {n} 個資料夾', { n: r.length }) : '')
 }
+const found = n => props.unit === '個' ? t('找到 {n} 個', { n }) : t('找到 {n} 組', { n })
+const left = n => props.unit === '個' ? t('還剩 {n} 個', { n }) : t('還剩 {n} 組', { n })
 </script>
 
 <template>
   <div class="hist">
     <div class="hhead">
       <Icon name="history" :size="14" />
-      <b>歷史紀錄</b>
-      <span class="dim">（保留最近 {{ keep }} 次掃描）</span>
+      <b>{{ t('歷史紀錄') }}</b>
+      <span class="dim">{{ t('（保留最近 {n} 次掃描）', { n: keep }) }}</span>
       <span class="spacer"></span>
-      <button class="btn ghost" @click="emit('close')">返回</button>
+      <button class="btn ghost" @click="emit('close')">{{ t('返回') }}</button>
     </div>
     <div v-if="error" class="err">{{ error }}</div>
-    <div v-if="entries === null" class="dim pad">讀取中…</div>
-    <div v-else-if="!entries.length" class="dim pad">還沒有任何掃描紀錄。</div>
+    <div v-if="entries === null" class="dim pad">{{ t('讀取中…') }}</div>
+    <div v-else-if="!entries.length" class="dim pad">{{ t('還沒有任何掃描紀錄。') }}</div>
     <div v-for="e in entries || []" :key="e.id" class="hrow"
          :class="{ cur: e.id === current }">
       <div class="when">
         {{ when(e.at) }}
-        <span v-if="e.latest" class="tag new">最新</span>
-        <span v-if="e.partial" class="tag warn">中途停止</span>
-        <span v-if="e.id === current" class="tag on">目前顯示</span>
+        <span v-if="e.latest" class="tag new">{{ t('最新') }}</span>
+        <span v-if="e.partial" class="tag warn">{{ t('中途停止') }}</span>
+        <span v-if="e.id === current" class="tag on">{{ t('目前顯示') }}</span>
       </div>
       <div class="what">
         <span class="sc" :title="(e.roots || []).join('\n')">{{ scope(e) }}</span>
-        <span v-if="kind === 'video' && e.tier2" class="tag">含 Tier 2</span>
-        <span v-if="kind === 'image' && e.max_distance != null" class="tag">門檻 {{ e.max_distance }}</span>
-        <span v-for="t in e.tags || []" :key="t" class="tag">{{ t }}</span>
+        <span v-if="kind === 'video' && e.tier2" class="tag">{{ t('含 Tier 2') }}</span>
+        <span v-if="kind === 'image' && e.max_distance != null" class="tag">{{ t('門檻 {n}', { n: e.max_distance }) }}</span>
+        <span v-for="tag in e.tags || []" :key="tag" class="tag">{{ ts(tag) }}</span>
       </div>
       <!-- The duplicate lists say what was left when the report was last
            opened (`remaining_at`): the list itself checks no file, so it
            opens at once instead of checking twenty reports on the NAS. -->
-      <div class="cnt" :title="e.remaining_at ? `${when(e.remaining_at)} 開啟時的狀況` : ''">
-        找到 {{ e.groups }} {{ unit }}
-        <template v-if="e.remaining == null"> · <span class="never">還沒開啟過</span></template>
+      <div class="cnt" :title="e.remaining_at ? t('{time} 開啟時的狀況', { time: when(e.remaining_at) }) : ''">
+        {{ found(e.groups) }}
+        <template v-if="e.remaining == null"> · <span class="never">{{ t('還沒開啟過') }}</span></template>
         <template v-else> ·
-          <template v-if="e.remaining_at">上次開啟時</template>
-          <b v-if="e.remaining" class="left">還剩 {{ e.remaining }} {{ unit }}</b>
-          <span v-else class="done">已處理完</span>
+          <template v-if="e.remaining_at">{{ t('上次開啟時') }}</template>
+          <b v-if="e.remaining" class="left">{{ left(e.remaining) }}</b>
+          <span v-else class="done">{{ t('已處理完') }}</span>
         </template>
       </div>
       <div class="acts">
-        <button class="btn xs" :disabled="!!busy" @click="emit('open', e.id)">開啟</button>
-        <button class="btn ghost xs del" :disabled="!!busy" title="只刪除紀錄，不動任何檔案"
-                @click="remove(e)">刪除</button>
+        <button class="btn xs" :disabled="!!busy" @click="emit('open', e.id)">{{ t('開啟') }}</button>
+        <button class="btn ghost xs del" :disabled="!!busy" :title="t('只刪除紀錄，不動任何檔案')"
+                @click="remove(e)">{{ t('刪除') }}</button>
       </div>
     </div>
   </div>

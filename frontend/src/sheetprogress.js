@@ -39,11 +39,13 @@ export function isComplete(s) {
   return !!s && s.total > 0 && s.ready >= s.total
 }
 
+import { t } from './i18n.js'
+
 /** "已產生 8 / 20 張", or the single-sheet case, which needs no count. */
 export function label(s) {
   if (!s || !s.total) return ''
-  if (s.total === 1) return s.ready >= 1 ? '已產生' : '產生中…'
-  return `已產生 ${Math.min(s.ready, s.total)} / ${s.total} 張`
+  if (s.total === 1) return s.ready >= 1 ? t('已產生') : t('產生中…')
+  return t('已產生 {ready} / {total} 張', { ready: Math.min(s.ready, s.total), total: s.total })
 }
 
 /**

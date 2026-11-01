@@ -12,6 +12,7 @@
  * looks exactly like one that is right until you count the photos.
  */
 import { naturalCompare, baseName } from './photosort.js'
+import { t, N_ } from './i18n.js'
 
 /** The flat grid: exactly what it was before albums existed. */
 export function flatItems(items) {
@@ -39,7 +40,14 @@ export function pickCover(items) {
   return byName.find(m => !m.is_video) || byName[0] || null
 }
 
-export const LOOSE_NAME = '未分組照片'
+// a key: shown through albumName(), so it follows the language
+export const LOOSE_NAME = N_('未分組照片')
+
+/** What a card or the header calls the album. Only the loose one is ours to
+ *  translate; the rest are the user's folder names. */
+export function albumName(a) {
+  return a.kind === 'loose' ? t(a.name) : a.name
+}
 
 /** Group items into albums. Each album carries what its card needs. */
 export function buildAlbums(items) {
@@ -106,7 +114,7 @@ export function nextAlbumSort(cur, by) {
 /** "98 張 · 2 部" — the card caption. */
 export function albumCaption(a) {
   const parts = []
-  if (a.photos) parts.push(`${a.photos} 張`)
-  if (a.videos) parts.push(`${a.videos} 部影片`)
+  if (a.photos) parts.push(t('{n} 張', { n: a.photos }))
+  if (a.videos) parts.push(t('{n} 部影片', { n: a.videos }))
   return parts.join(' · ')
 }

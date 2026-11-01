@@ -15,6 +15,8 @@ import { api, errText } from '../api'
 import { pct, fmtProgressCount, fmtEta } from '../scanprogress'
 import { thresholdHint, colorHint, THRESHOLD_GUIDE, COLOR_GUIDE } from '../photosort'
 import Icon from './Icon.vue'
+import { t } from '../i18n'
+import { ts } from '../serverstrings.js'
 
 const props = defineProps({ folder: { type: String, required: true } })
 const emit = defineEmits(['close', 'applied'])
@@ -68,7 +70,7 @@ onMounted(async () => {
     if (colorOn.value && sc !== d.color) await load(threshold.value, colorParam.value)
     if (d.running) attach(d.running)
   } catch (e) {
-    error.value = '讀取失敗：' + errText(e)
+    error.value = t('讀取失敗：') + errText(e)
   } finally {
     loading.value = false
   }
@@ -101,11 +103,11 @@ async function poll() {
       return
     }
     jobId.value = null
-    if (j.status === 'error') { error.value = '掃描失敗：' + (j.error || ''); return }
+    if (j.status === 'error') { error.value = t('掃描失敗：') + ts(j.error); return }
     await apply()
   } catch (e) {
     jobId.value = null
-    error.value = '掃描失敗：' + errText(e)
+    error.value = t('掃描失敗：') + errText(e)
   }
 }
 
@@ -119,7 +121,7 @@ async function start() {
     progress.value = null
     attach(job_id)
   } catch (e) {
-    error.value = '無法開始掃描：' + errText(e)
+    error.value = t('無法開始掃描：') + errText(e)
   }
 }
 
@@ -135,7 +137,7 @@ async function apply() {
     const d = await load(th, co)
     emit('applied', { threshold: d.threshold, groups: d.groups })
   } catch (e) {
-    error.value = '套用失敗：' + errText(e)
+    error.value = t('套用失敗：') + errText(e)
   } finally {
     applying.value = false
   }
@@ -152,22 +154,22 @@ onBeforeUnmount(() => {
   <div class="modal" @click.self="emit('close')">
     <div class="dlg">
       <div class="dhead">
-        <span class="ib"><Icon name="image" :size="15" /> 相似排序</span>
+        <span class="ib"><Icon name="image" :size="15" /> {{ t('相似排序') }}</span>
         <span class="spacer"></span>
         <button class="btn ghost ib" @click="emit('close')">
-          <Icon name="close" :size="14" /> 關閉
+          <Icon name="close" :size="14" /> {{ t('關閉') }}
         </button>
       </div>
 
-      <div v-if="loading" class="dim ib"><Icon name="spinner" :size="13" class="spin" /> 讀取中…</div>
+      <div v-if="loading" class="dim ib"><Icon name="spinner" :size="13" class="spin" /> {{ t('讀取中…') }}</div>
       <template v-else-if="stats">
         <p class="intro">
-          把相似的照片排在一起，其餘照片照時間順序。只改顯示順序，不會更動任何檔案。
+          {{ t('把相似的照片排在一起，其餘照片照時間順序。只改顯示順序，不會更動任何檔案。') }}
         </p>
 
-        <div class="guide">{{ THRESHOLD_GUIDE }}</div>
+        <div class="guide">{{ t(THRESHOLD_GUIDE) }}</div>
         <div class="row">
-          <label class="lab">構圖門檻</label>
+          <label class="lab">{{ t('構圖門檻') }}</label>
           <input type="range" :min="limits.min" :max="limits.max" step="1"
                  v-model.number="threshold" :disabled="scanning || applying" />
           <span class="val">{{ threshold }} / 256</span>
@@ -176,12 +178,12 @@ onBeforeUnmount(() => {
 
         <label class="ib chk">
           <input type="checkbox" v-model="colorOn" :disabled="scanning || applying" />
-          同一套造型換了姿勢也排在一起（比對顏色）
+          {{ t('同一套造型換了姿勢也排在一起（比對顏色）') }}
         </label>
         <template v-if="colorOn">
-          <div class="guide">{{ COLOR_GUIDE }}</div>
+          <div class="guide">{{ t(COLOR_GUIDE) }}</div>
           <div class="row">
-            <label class="lab">顏色門檻</label>
+            <label class="lab">{{ t('顏色門檻') }}</label>
             <input type="range" :min="limits.color_min" :max="limits.color_max" step="1"
                    v-model.number="colorValue" :disabled="scanning || applying" />
             <span class="val">{{ colorValue }}%</span>
@@ -192,22 +194,23 @@ onBeforeUnmount(() => {
         <div class="preview">
           <template v-if="stats.cached">
             <Icon v-if="previewing" name="spinner" :size="12" class="spin" />
-            目前設定：分成 <b>{{ stats.group_count }}</b> 組，共 <b>{{ stats.grouped }}</b> 張照片排在一起
-            <span class="dim">（已掃描 {{ stats.cached }} 張）</span>
+            {{ t('目前設定：分成') }} <b>{{ stats.group_count }}</b> {{ t('組，共') }}
+            <b>{{ stats.grouped }}</b> {{ t('張照片排在一起') }}
+            <span class="dim">{{ t('（已掃描 {n} 張）', { n: stats.cached }) }}</span>
           </template>
-          <template v-else>還沒掃描過，按「開始掃描」之後才看得到分組結果</template>
+          <template v-else>{{ t('還沒掃描過，按「開始掃描」之後才看得到分組結果') }}</template>
           <div v-if="stats.missing" class="dim">
-            還有 {{ stats.missing }} 張照片沒掃描過，第一次每張約 30 毫秒，之後會記住
+            {{ t('還有 {n} 張照片沒掃描過，第一次每張約 30 毫秒，之後會記住', { n: stats.missing }) }}
           </div>
         </div>
 
         <div v-if="scanning" class="prog">
           <div class="bar"><i :style="{ width: progPct + '%' }"></i></div>
           <div class="ptext">
-            讀取照片 {{ fmtProgressCount(progress) }}
-            <span v-if="etaText"> · 剩餘 {{ etaText }}</span>
+            {{ t('讀取照片 {n}', { n: fmtProgressCount(progress) }) }}
+            <span v-if="etaText"> · {{ t('剩餘 {eta}', { eta: etaText }) }}</span>
           </div>
-          <div class="dim">可以關閉視窗，掃描會在背景繼續</div>
+          <div class="dim">{{ t('可以關閉視窗，掃描會在背景繼續') }}</div>
         </div>
 
         <div v-if="error" class="err">{{ error }}</div>
@@ -216,7 +219,7 @@ onBeforeUnmount(() => {
           <span class="spacer"></span>
           <button class="btn ib" :disabled="scanning || applying" @click="start">
             <Icon :name="applying ? 'spinner' : 'search'" :size="13" :class="{ spin: applying }" />
-            {{ stats.missing ? '開始掃描' : '套用' }}
+            {{ stats.missing ? t('開始掃描') : t('套用') }}
           </button>
         </div>
       </template>

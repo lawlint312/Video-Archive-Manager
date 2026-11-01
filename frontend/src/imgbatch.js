@@ -9,6 +9,8 @@
 // Pure, so `node tests/imgbatch.test.mjs` can pin it: what a batch deletes is
 // exactly what the confirmation said it would.
 
+import { t } from './i18n.js'
+
 export const BATCH_MAX = 20
 
 /** True when the live files are byte-identical copies only. */
@@ -56,7 +58,7 @@ export function batchPlan(groups, max) {
 
 /** How much to trust a batch at this distance, in the user's words. */
 export function batchRisk(max) {
-  if (max <= 14) return { level: 'safe', text: '實測無誤判' }
-  if (max <= 19) return { level: 'mid', text: '約 1 成會判錯' }
-  return { level: 'high', text: '約 3 成會判錯' }
+  if (max <= 14) return { level: 'safe', text: t('實測無誤判') }
+  if (max <= 19) return { level: 'mid', text: t('約 1 成會判錯') }
+  return { level: 'high', text: t('約 3 成會判錯') }
 }

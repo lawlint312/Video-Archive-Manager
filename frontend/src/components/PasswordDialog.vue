@@ -3,6 +3,8 @@ import { ref, computed } from 'vue'
 import { api, errText } from '../api'
 import { POLICY, changeProblem } from '../password'
 import Icon from './Icon.vue'
+import { t } from '../i18n'
+import { ts } from '../serverstrings.js'
 
 const props = defineProps({
   // Set when the server said this account must pick a new password before it
@@ -48,43 +50,43 @@ async function submit() {
          manager fell into. -->
     <form class="dlg" @submit.prevent="submit">
       <div class="dhead">
-        <span class="ib"><Icon name="user" :size="15" /> 修改密碼</span>
+        <span class="ib"><Icon name="user" :size="15" /> {{ t('修改密碼') }}</span>
         <span class="spacer"></span>
         <button v-if="!props.forced" type="button" class="btn ghost ib" @click="emit('close')">
-          <Icon name="close" :size="14" /> 關閉
+          <Icon name="close" :size="14" /> {{ t('關閉') }}
         </button>
       </div>
 
       <div v-if="props.forced" class="forced">
-        這個帳號的密碼太容易被猜到，請先換一個才能繼續使用。
-        <div v-if="props.reason" class="why">{{ props.reason }}</div>
+        {{ t('這個帳號的密碼太容易被猜到，請先換一個才能繼續使用。') }}
+        <div v-if="props.reason" class="why">{{ ts(props.reason) }}</div>
       </div>
 
-      <label class="lab">目前的密碼</label>
+      <label class="lab">{{ t('目前的密碼') }}</label>
       <input v-model="current" type="password" name="current-password"
              autocomplete="current-password" :disabled="busy" />
 
-      <label class="lab">新密碼</label>
+      <label class="lab">{{ t('新密碼') }}</label>
       <input v-model="next" type="password" name="new-password"
              autocomplete="new-password" :disabled="busy" />
-      <label class="lab">再輸入一次新密碼</label>
+      <label class="lab">{{ t('再輸入一次新密碼') }}</label>
       <input v-model="again" type="password" name="new-password-again"
              autocomplete="new-password" :disabled="busy" />
-      <div class="hint">{{ POLICY }}</div>
+      <div class="hint">{{ t(POLICY) }}</div>
 
       <div v-if="error" class="err">{{ error }}</div>
       <div v-else-if="liveProblem" class="warn">{{ liveProblem }}</div>
 
-      <div class="note">改好之後，這個帳號在所有裝置上的登入都會失效，需要用新密碼重新登入。</div>
+      <div class="note">{{ t('改好之後，這個帳號在所有裝置上的登入都會失效，需要用新密碼重新登入。') }}</div>
 
       <div class="foot">
         <span class="spacer"></span>
         <button v-if="props.forced" type="button" class="btn ghost"
-                :disabled="busy" @click="emit('logout')">登出</button>
+                :disabled="busy" @click="emit('logout')">{{ t('登出') }}</button>
         <button v-else type="button" class="btn ghost" @click="emit('close')"
-                :disabled="busy">取消</button>
+                :disabled="busy">{{ t('取消') }}</button>
         <button type="submit" class="btn ib" :disabled="busy">
-          <Icon v-if="busy" name="spinner" :size="13" class="spin" /> 修改密碼
+          <Icon v-if="busy" name="spinner" :size="13" class="spin" /> {{ t('修改密碼') }}
         </button>
       </div>
     </form>

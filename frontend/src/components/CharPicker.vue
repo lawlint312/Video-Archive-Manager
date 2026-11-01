@@ -15,6 +15,7 @@ import { ref, computed, onMounted } from 'vue'
 import { api, errText } from '../api'
 import { matchesQuery } from '../scopefilter'
 import Icon from './Icon.vue'
+import { t, N_ } from '../i18n'
 
 const props = defineProps({
   storageKey: { type: String, default: 'vam.charpicker' },
@@ -44,9 +45,10 @@ const onlySelected = ref(false)
 // "todo" folds in the ones a previous run could not resolve: adding films to
 // a folder can make it resolvable, so they are worth re-offering rather than
 // being parked forever.
+// keys: shown through t()
 const LABELS = {
-  profile: { done: '已完成', rejected: '先前已否決', unresolved: '上次無法判斷' },
-  title: { done: '已完成', partial: '部分已有' },
+  profile: { done: N_('已完成'), rejected: N_('先前已否決'), unresolved: N_('上次無法判斷') },
+  title: { done: N_('已完成'), partial: N_('部分已有') },
 }
 function stateOf(c) {
   return props.mode === 'title' ? (c.title_state || 'none') : c.state
@@ -113,7 +115,7 @@ onMounted(async () => {
     chars.value = d.chars
     order.value = d.order
   } catch (e) {
-    error.value = '無法載入角色清單：' + errText(e)
+    error.value = t('無法載入角色清單：') + errText(e)
   }
 })
 </script>
@@ -124,41 +126,41 @@ onMounted(async () => {
 
     <div class="tally" :class="{ none: !chosen.size }">
       <Icon :name="chosen.size ? 'checked' : 'warn'" :size="13" />
-      已選 <b>{{ chosen.size }}</b> / {{ chars.length }} 位角色
+      {{ t('已選') }} <b>{{ chosen.size }}</b> {{ t('/ {n} 位角色', { n: chars.length }) }}
       <span class="spacer"></span>
       <button class="lnk" :class="{ on: onlySelected }"
               @click="onlySelected = !onlySelected">
-        {{ onlySelected ? '顯示全部' : '只看已選' }}
+        {{ onlySelected ? t('顯示全部') : t('只看已選') }}
       </button>
     </div>
 
     <div class="search">
       <Icon name="search" :size="13" />
-      <input v-model="q" :disabled="disabled" placeholder="搜尋角色…" />
+      <input v-model="q" :disabled="disabled" :placeholder="t('搜尋角色…')" />
       <button v-if="q" class="x" @click="q = ''">×</button>
-      <span v-if="filtering" class="hint">顯示 {{ shown.length }} 位</span>
+      <span v-if="filtering" class="hint">{{ t('顯示 {n} 位', { n: shown.length }) }}</span>
     </div>
 
     <div v-if="mode !== 'plain'" class="chips">
       <button class="chip st" :class="{ on: stateFilter === 'todo' }"
               @click="stateFilter = stateFilter === 'todo' ? '' : 'todo'">
-        未處理 {{ todoCount }}
+        {{ t('未處理 {n}', { n: todoCount }) }}
       </button>
       <button class="chip st" :class="{ on: stateFilter === 'done' }"
               @click="stateFilter = stateFilter === 'done' ? '' : 'done'">
-        已完成 {{ doneCount }}
+        {{ t('已完成 {n}', { n: doneCount }) }}
       </button>
-      <button class="lnk sel" @click="selectTodo">全選未處理</button>
+      <button class="lnk sel" @click="selectTodo">{{ t('全選未處理') }}</button>
     </div>
 
     <div class="chips">
       <button class="chip" :class="{ on: !groupFilter }" @click="groupFilter = ''">
-        全部 {{ chars.length }}
+        {{ t('全部 {n}', { n: chars.length }) }}
       </button>
       <button v-for="g in groups" :key="g.name" class="chip"
               :class="{ on: groupFilter === g.name }"
               @click="groupFilter = groupFilter === g.name ? '' : g.name">
-        {{ g.name }} {{ g.n }}
+        {{ g.name === '未分類' ? t('未分類') : g.name }} {{ g.n }}
       </button>
     </div>
 
@@ -167,28 +169,28 @@ onMounted(async () => {
          webcam folder as if it were a film -->
     <div v-if="groupFilter === '未分類' || (!groupFilter && !q)" class="warnbox">
       <Icon name="warn" :size="13" />
-      「未分類」混有大量非 JAV 角色，番號會誤判（例如 <code>guoguo-77 [SC]</code>
-      被當成 <code>GUOGUO-077</code>）。建議只挑確定是 JAV 演員的。
+      {{ t('「未分類」混有大量非 JAV 角色，番號會誤判（例如') }} <code>guoguo-77 [SC]</code>
+      {{ t('被當成') }} <code>GUOGUO-077</code>{{ t('）。建議只挑確定是 JAV 演員的。') }}
     </div>
 
     <div class="box">
       <template v-for="s in sections" :key="s.name">
         <div class="ghdr">
-          {{ s.name }} <span class="n">({{ s.members.length }})</span>
+          {{ s.name === '未分類' ? t('未分類') : s.name }} <span class="n">({{ s.members.length }})</span>
           <span class="spacer"></span>
-          <button class="lnk" @click="setAll(s.members, true)">全選 {{ s.members.length }}</button>
-          <button class="lnk" @click="setAll(s.members, false)">全不選</button>
+          <button class="lnk" @click="setAll(s.members, true)">{{ t('全選 {n}', { n: s.members.length }) }}</button>
+          <button class="lnk" @click="setAll(s.members, false)">{{ t('全不選') }}</button>
         </div>
         <label v-for="c in s.members" :key="c.name" class="row">
           <input type="checkbox" :checked="chosen.has(c.name)" :disabled="disabled"
                  @change="toggle(c.name)" />
           <span class="nm">{{ c.name }}</span>
           <span v-if="mode !== 'plain' && STATE_LABEL[stateOf(c)]" class="badge" :class="stateOf(c)">
-            {{ STATE_LABEL[stateOf(c)] }}
+            {{ t(STATE_LABEL[stateOf(c)]) }}
           </span>
         </label>
       </template>
-      <div v-if="!sections.length" class="dim">沒有符合的角色。</div>
+      <div v-if="!sections.length" class="dim">{{ t('沒有符合的角色。') }}</div>
     </div>
   </div>
 </template>

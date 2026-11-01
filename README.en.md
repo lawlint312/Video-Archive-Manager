@@ -12,14 +12,14 @@ It runs in the browser, so it works on a desktop, a phone or a tablet without in
 
 Tested at:
 
-- 🎬 **30,000+ videos**
-- 👤 **730 people**
-- 🖼️ **160,000+ photos**
-- 💾 spread across 8 local drives and a NAS
+- **30,000+ videos**
+- **730 people**
+- **160,000+ photos**
+- spread across 8 local drives and a NAS
 
 > VAM manages your own files. It **contains and provides no media**.
 >
-> **The interface is in Traditional Chinese only for now.** This page and the screenshots describe what each screen does.
+> The interface is available in **Traditional Chinese, Simplified Chinese and English**; each account picks its own from the account menu at the top right. The screenshots show the Traditional Chinese interface.
 
 <p align="center"><img src="screenshots/home.jpg" alt="Home: people grouped into categories, each category with its own card shape" width="900"></p>
 
@@ -42,9 +42,9 @@ New downloads land in an **inbox** (待分類) first. Once you have checked them
 
 ---
 
-# ✨ Features
+# Features
 
-## 🎬 Browsing and watching
+## Browsing and watching
 
 - **Custom categories**: the home page shows people by category, and each category picks its card shape (round, 16:9, 4:5, 9:16) and whether to use cover art.
 - **Sorting and filters**: by name, file size, date added or release date; quick filters for **unwatched** and **favourites**.
@@ -66,7 +66,7 @@ New downloads land in an **inbox** (待分類) first. Once you have checked them
 
 <p align="center"><img src="screenshots/player.jpg" alt="Player: edit the title and notes while watching" width="800"></p>
 
-## 🖼️ Photos
+## Photos
 
 - A photo wall for each person, sorted by date, name, file size or **visual similarity** (composition and colour), with an album view as well.
 - Thumbnails are generated and cached by the server; the original only loads when you open a photo.
@@ -87,7 +87,7 @@ New downloads land in an **inbox** (待分類) first. Once you have checked them
 
 ---
 
-# 🗂️ Organising and filing
+# Organising and filing
 
 - **Inbox workflow**: preview, watch, then file once you are sure; you can move on to the next video while files are still being moved.
 - **File a whole folder**: send an entire folder to a person in one step.
@@ -98,7 +98,7 @@ New downloads land in an **inbox** (待分類) first. Once you have checked them
 
 ---
 
-# 🔍 Duplicate scans
+# Duplicate scans
 
 - **Videos**: first by size and hash (identical files), then by duration and frame fingerprints (the same video at a different quality or in another version), with a suggestion of which copy to keep.
 - **Images**: finds identical and near-identical photos, including watermarked versions.
@@ -108,7 +108,7 @@ New downloads land in an **inbox** (待分類) first. Once you have checked them
 
 ---
 
-# 🤖 AI-assisted organising (optional, installed separately)
+# AI-assisted organising (optional, installed separately)
 
 - **Person detection**: finds photos in a folder with **nobody in them** (landscapes, food, objects) so they are easy to clean up. About 0.07 s per photo on an NVIDIA GPU; it also runs without one, about 5× slower.
 - **Face recognition**: analyses faces in inbox videos and suggests who they might be, based on the people you have already set up. Needs an NVIDIA GPU.
@@ -117,7 +117,7 @@ If they are not installed, these two features say in the interface which package
 
 ---
 
-# 🎞️ Video tools
+# Video tools
 
 Every tool that changes a video **verifies** the result: if verification fails, the original is not deleted.
 
@@ -125,13 +125,13 @@ Every tool that changes a video **verifies** the result: if verification fails, 
 - **Repair**: rescues fragmented MP4s mislabelled as `.ts`, masks corrupted frames, fixes audio dropouts and interrupted recordings, and corrects frame timing that causes stutter.
 - **Full decode check**: decodes every frame once to find files that look fine but are broken in the middle.
 - **Shrink**: re-encodes to save space, **always to a new file**. You can play the original and the smaller version side by side, in sync, and compare quality before deciding which to keep.
-- **✂️ Clip**: select several segments and join them into one video. Pick rough ranges on the contact sheet, then fine-tune in the player. Choose "fast" (snaps to keyframes, no quality loss) or "frame-accurate" (re-encodes).
+- **Clip**: select several segments and join them into one video. Pick rough ranges on the contact sheet, then fine-tune in the player. Choose "fast" (snaps to keyframes, no quality loss) or "frame-accurate" (re-encodes).
 
 <p align="center"><img src="screenshots/clip.jpg" alt="Clipping: pick several segments and join them into one video" width="800"></p>
 
 ---
 
-# 📚 Filling in metadata
+# Filling in metadata
 
 - **Titles and release dates**: looked up by product code in DMM's public catalogue, for the original Japanese title and release date; anything not found there is tried on JAVDatabase.
 - **Cover art**: downloads both the portrait front and the landscape sleeve, saved next to the video as `-poster.jpg` / `-fanart.jpg`.
@@ -143,7 +143,7 @@ Every tool that changes a video **verifies** the result: if verification fails, 
 
 ---
 
-# 🔐 Accounts, permissions and security
+# Accounts, permissions and security
 
 - **Permission groups**: the administrator creates groups and ticks exactly which features each can use (filing, deleting, duplicate scans, conversion, clipping, metadata lookups…). Permissions are enforced on the server, not just by hiding buttons.
 - **Folder access**: each account can be limited to certain library folders.
@@ -152,12 +152,13 @@ Every tool that changes a video **verifies** the result: if verification fails, 
 - **Alerts**: the administrator is told about events such as a successful sign-in from an address never used before, or two-factor being turned off, and can see and sign out any device that is signed in.
 - **Remote access**: by default only LAN and VPN addresses are accepted. To connect from outside, put Caddy in front for a proper HTTPS certificate (template in `caddy/Caddyfile.example`).
 - **Backups**: the databases are backed up every day to another drive of your choice.
+- **Interface language**: Traditional Chinese, Simplified Chinese or English. Each account chooses its own and the choice is stored with the account, so it follows you to another device; the sign-in page uses whatever this browser used last.
 
 <p align="center"><img src="screenshots/permissions.jpg" alt="Permission groups: tick which features each group can use" width="800"></p>
 
 ---
 
-# 🚀 Installing and running
+# Installing and running
 
 VAM is developed and used on **Windows 10 / 11**, and the launch scripts are `.bat` files. The backend is Python and should run on Linux / macOS too, but that has not been tested.
 
@@ -210,7 +211,7 @@ set VAM_ADMIN_PASSWORD=your-password
 start.bat
 ```
 
-Then open **http://localhost:8301/**, sign in as `admin`, and add your library folders and inbox folder under **設定 (Settings) → 資料夾與瀏覽 (Folders and browsing)**.
+Then open **http://localhost:8301/** and sign in as `admin`. To switch the interface to English, open the account menu at the top right and choose **English** under 語言 (Language). Then add your library folders and inbox folder under **Settings → Folders & browsing**.
 
 ### 2. Recommended and optional components
 
@@ -242,7 +243,7 @@ pip install -r backend/requirements-ai.txt
 ```
 
 **Face recognition**: ready once the packages are installed. The first use downloads insightface's `buffalo_l` model (about 300 MB).
-⚠ That model is licensed **for non-commercial research only**; please check [insightface's license terms](https://github.com/deepinsight/insightface#license) before using it.
+Note: that model is licensed **for non-commercial research only**; please check [insightface's license terms](https://github.com/deepinsight/insightface#license) before using it.
 
 **Person detection**: also needs a model file. Download `person_yolov8m-seg.pt` (about 55 MB) from
 [Bingsu/adetailer](https://huggingface.co/Bingsu/adetailer/blob/main/person_yolov8m-seg.pt)
@@ -252,7 +253,7 @@ on Hugging Face and put it at:
 data\models\person_yolov8m-seg.pt
 ```
 
-After restarting VAM, a person's photo tab offers "辨識人物" (detect people) and the "沒有人物" (no people) filter.
+After restarting VAM, a person's photo tab offers **Detect people** and the **No person** filter.
 
 ### Folder layout
 
@@ -303,7 +304,7 @@ The tests use only temporary folders and the synthetic files in `testdata\`; the
 
 ---
 
-# 🎯 The problem VAM solves
+# The problem VAM solves
 
 Once a video and photo collection grows to thousands or tens of thousands of files, the hard part is usually no longer "playing a video" but:
 

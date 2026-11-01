@@ -7,6 +7,8 @@ import RoleManager from './RoleManager.vue'
 import CacheHelp from './CacheHelp.vue'
 import Icon from './Icon.vue'
 import SideDialog from './SideDialog.vue'
+import { t, N_ } from '../i18n'
+import { ts } from '../serverstrings.js'
 
 const emit = defineEmits(['close'])
 
@@ -46,11 +48,11 @@ async function toggleHelp(name) {
 // measured on a 1080p / 145-minute film, 12 grabs per sheet — the returns
 // taper off sharply, which is not something you can guess from the number
 const WORKER_MEASURED = [
-  { n: 1, local: '2.78 s', nas: '3.40 s', note: '關閉平行（原本的行為）' },
+  { n: 1, local: '2.78 s', nas: '3.40 s', note: N_('關閉平行（原本的行為）') },
   { n: 2, local: '1.94 s', nas: '—', note: '' },
-  { n: 4, local: '1.57 s', nas: '2.07 s', note: '預設 —— 轉折點' },
+  { n: 4, local: '1.57 s', nas: '2.07 s', note: N_('預設 —— 轉折點') },
   { n: 6, local: '1.67 s', nas: '2.03 s', note: '' },
-  { n: 12, local: '1.54 s', nas: '—', note: '再多也沒用了' },
+  { n: 12, local: '1.54 s', nas: '—', note: N_('再多也沒用了') },
 ]
 
 // measured on a 1920x1080 source, 4x3 tiles — the numbers people actually
@@ -89,20 +91,20 @@ async function sweepCache() {
     // off the saved setting, and the field had not been saved yet.
     const field = { thumbs: thumbLimitGb, sheets: sheetLimitGb,
                     photos: photoLimitGb }
-    const name = { thumbs: '影片縮圖', sheets: '縮圖表',
-                   photos: '照片縮圖', shrink_samples: '壓縮試看片段',
-                   gfriends: '圖庫頭像候選' }
+    const name = { thumbs: t('影片縮圖'), sheets: t('縮圖表'),
+                   photos: t('照片縮圖'), shrink_samples: t('壓縮試看片段'),
+                   gfriends: t('圖庫頭像候選') }
     sweepMsg.value = ['thumbs', 'sheets', 'photos', 'shrink_samples', 'gfriends']
       .filter(k => r[k]).map(k => {
       const x = r[k]
       const unsaved = field[k] && Number(field[k].value) !== x.limit_gb
-        ? `（畫面上的 ${field[k].value} GB 尚未儲存，請先按 OK）` : ''
-      return x.removed
-        ? `${name[k]}：刪了 ${x.removed} 個檔案，釋出 ${fmtBytes(x.before - x.after)}${unsaved}`
-        : `${name[k]}：目前 ${fmtBytes(x.after)}，未超過已儲存的 ${x.limit_gb} GB 上限${unsaved}`
+        ? t('（畫面上的 {n} GB 尚未儲存，請先按 OK）', { n: field[k].value }) : ''
+      return (x.removed
+        ? t('{name}：刪了 {n} 個檔案，釋出 {size}', { name: name[k], n: x.removed, size: fmtBytes(x.before - x.after) })
+        : t('{name}：目前 {size}，未超過已儲存的 {limit} GB 上限', { name: name[k], size: fmtBytes(x.after), limit: x.limit_gb })) + unsaved
     }).join('\n')
   } catch (e) {
-    sweepMsg.value = '失敗：' + errText(e)
+    sweepMsg.value = t('失敗：') + errText(e)
   } finally { sweeping.value = false }
 }
 const loading = ref(true)
@@ -111,17 +113,18 @@ const error = ref('')
 const tab = ref('paths')      // paths | sheet | users | roles | backup | security
 // The categories down the left side. Backup and the sign-in log load their
 // data when opened, as their tabs did.
+// labels are keys, translated in navItems so they follow the language
 const NAV = [
-  { key: 'paths', label: '資料夾與瀏覽', icon: 'folder' },
-  { key: 'sheet', label: '縮圖表', icon: 'grid' },
-  { key: 'users', label: '使用者', icon: 'user' },
-  { key: 'roles', label: '權限組', icon: 'check' },
-  { key: 'backup', label: '備份', icon: 'copy' },
-  { key: 'security', label: '登入紀錄', icon: 'warn' },
+  { key: 'paths', label: N_('資料夾與瀏覽'), icon: 'folder' },
+  { key: 'sheet', label: N_('縮圖表'), icon: 'grid' },
+  { key: 'users', label: N_('使用者'), icon: 'user' },
+  { key: 'roles', label: N_('權限組'), icon: 'check' },
+  { key: 'backup', label: N_('備份'), icon: 'copy' },
+  { key: 'security', label: N_('登入紀錄'), icon: 'warn' },
 ]
 // the badge on the sign-in log: failures in the last 7 days
-const navItems = computed(() => NAV.map(n => n.key === 'security' && failed7d.value
-  ? { ...n, badge: failed7d.value, warn: true } : n))
+const navItems = computed(() => NAV.map(n => ({ ...n, label: t(n.label) })).map(n =>
+  n.key === 'security' && failed7d.value ? { ...n, badge: failed7d.value, warn: true } : n))
 function go(key) {
   if (key === 'backup') openBackup()
   else if (key === 'security') openSecurity()
@@ -168,7 +171,7 @@ async function saveBackup() {
       backup_keep: Number(bkKeep.value) || 14,
     }) })
     await loadBackup()
-    bkMsg.value = '已儲存'
+    bkMsg.value = t('已儲存')
   } catch (e) { bkError.value = errText(e) }
   finally { bkBusy.value = '' }
 }
@@ -185,8 +188,8 @@ async function runBackup() {
       backup_keep: Number(bkKeep.value) || 14,
     }) })
     const r = await api('/api/backup/run', { method: 'POST' })
-    bkMsg.value = `備份完成：${r.files.length} 個檔案、${fmtBytes(r.bytes)}、`
-                + `${r.seconds} 秒${r.pruned ? `，並刪掉 ${r.pruned} 份舊的` : ''}`
+    bkMsg.value = t('備份完成：{n} 個檔案、{size}、{sec} 秒', { n: r.files.length, size: fmtBytes(r.bytes), sec: r.seconds })
+                + (r.pruned ? t('，並刪掉 {n} 份舊的', { n: r.pruned }) : '')
     await loadBackup()
   } catch (e) { bkError.value = errText(e) }
   finally { bkBusy.value = '' }
@@ -260,7 +263,7 @@ async function load() {
     photoLimitGb.value = s.photo_limit_gb ?? 3
     loadCacheUsage()
   } catch (e) {
-    error.value = '載入失敗：' + errText(e)
+    error.value = t('載入失敗：') + errText(e)
   } finally {
     loading.value = false
   }
@@ -292,7 +295,7 @@ async function save() {
     emit('saved')
     emit('close')
   } catch (e) {
-    error.value = '儲存失敗：' + errText(e)
+    error.value = t('儲存失敗：') + errText(e)
   } finally {
     saving.value = false
   }
@@ -305,50 +308,48 @@ onMounted(load)
   <!-- Categories on the left, the chosen one on the right (SideDialog): six
        tabs no longer fit one line of a 640px dialog, and the pages are long
        enough that a fixed list beside them reads better than a strip above. -->
-  <SideDialog title="設定" :items="navItems" :model-value="tab"
+  <SideDialog :title="t('設定')" :items="navItems" :model-value="tab"
               @update:model-value="go" @close="emit('close')">
         <div v-if="tab === 'users'" class="body"><UserManager /></div>
         <div v-else-if="tab === 'roles'" class="body"><RoleManager /></div>
 
         <div v-else-if="tab === 'backup'" class="body">
           <div class="fhint intro">
-            複製 <b>{{ (bk?.sources || ['vam.db']).join('、') }}</b> 到你指定的資料夾。
-            帳號、看過／最愛、分類、設定、相似門檻都在 <b>vam.db</b> 裡，
-            <b>這些東西壞了或誤刪就再也回不來</b> —— 快取則是隨時可以重新產生的，所以不備份。
-            每天一次，服務啟動時若距離上次超過一天也會補跑一次。
+            {{ t('複製') }} <b>{{ (bk?.sources || ['vam.db']).join(t('、')) }}</b> {{ t('到你指定的資料夾。帳號、看過／最愛、分類、設定、相似門檻都在') }} <b>vam.db</b> {{ t('裡，') }}
+            <b>{{ t('這些東西壞了或誤刪就再也回不來') }}</b>{{ t(' —— 快取則是隨時可以重新產生的，所以不備份。每天一次，服務啟動時若距離上次超過一天也會補跑一次。') }}
           </div>
           <div class="card">
             <label class="item line">
-              <span class="lab">啟用自動備份</span>
+              <span class="lab">{{ t('啟用自動備份') }}</span>
               <input type="checkbox" class="cb" v-model="bkEnabled" />
             </label>
             <div class="item">
-              <label class="lab">備份資料夾</label>
-              <input v-model="bkDir" placeholder="D:\VAM備份" spellcheck="false" />
+              <label class="lab">{{ t('備份資料夾') }}</label>
+              <input v-model="bkDir" :placeholder="t('D:\\VAM備份')" spellcheck="false" />
               <div class="fhint">
-                <b>請指定另一顆實體硬碟或 NAS。</b>
-                跟資料放在同一顆硬碟的話，那顆硬碟壞掉時備份會一起消失。
+                <b>{{ t('請指定另一顆實體硬碟或 NAS。') }}</b>
+                {{ t('跟資料放在同一顆硬碟的話，那顆硬碟壞掉時備份會一起消失。') }}
               </div>
               <div v-if="sameDrive" class="fhint warnbox">
                 <Icon name="warn" :size="13" />
-                這個位置跟 VAM 的資料在同一個磁碟機代號 —— 誤刪救得回來，硬碟壞掉救不回來。
+                {{ t('這個位置跟 VAM 的資料在同一個磁碟機代號 —— 誤刪救得回來，硬碟壞掉救不回來。') }}
               </div>
             </div>
             <div class="item">
               <div class="line">
-                <label class="lab">保留份數</label>
+                <label class="lab">{{ t('保留份數') }}</label>
                 <input type="number" v-model.number="bkKeep" min="2" max="90" style="width:100px" />
               </div>
               <div class="fhint">
-                超過的會自動刪掉最舊的。每份約 {{ fmtBytes((bk?.runs?.[0]?.bytes) || 27000000) }}。
+                {{ t('超過的會自動刪掉最舊的。每份約 {size}。', { size: fmtBytes((bk?.runs?.[0]?.bytes) || 27000000) }) }}
               </div>
             </div>
             <div class="item">
               <div class="frow">
                 <button class="btn" :disabled="bkBusy" @click="saveBackup">
-                  {{ bkBusy === 'save' ? '儲存中…' : '儲存' }}</button>
+                  {{ bkBusy === 'save' ? t('儲存中…') : t('儲存') }}</button>
                 <button class="btn ghost" :disabled="bkBusy || !bkDir" @click="runBackup">
-                  {{ bkBusy === 'run' ? '備份中…' : '立即備份一次' }}</button>
+                  {{ bkBusy === 'run' ? t('備份中…') : t('立即備份一次') }}</button>
               </div>
               <div v-if="bkMsg" class="okmsg">{{ bkMsg }}</div>
               <div v-if="bkError" class="err">{{ bkError }}</div>
@@ -356,21 +357,21 @@ onMounted(load)
           </div>
 
           <div class="loghead">
-            狀態
+            {{ t('狀態') }}
             <span class="spacer"></span>
-            <button class="lnk" @click="loadBackup">重新整理</button>
+            <button class="lnk" @click="loadBackup">{{ t('重新整理') }}</button>
           </div>
           <div class="fhint">
             <template v-if="bk?.last_error">
-              <span class="bad">上次失敗：{{ bk.last_error }}</span>
+              <span class="bad">{{ t('上次失敗：') }}{{ bk.last_error }}</span>
             </template>
             <template v-else-if="bk?.last_at">
-              上次備份：{{ fmtWhen(bk.last_at) }}
+              {{ t('上次備份：{time}', { time: fmtWhen(bk.last_at) }) }}
             </template>
-            <template v-else>還沒有備份過。</template>
+            <template v-else>{{ t('還沒有備份過。') }}</template>
           </div>
           <div class="logbox">
-            <div v-if="!(bk?.runs || []).length" class="fhint">這個資料夾裡還沒有備份。</div>
+            <div v-if="!(bk?.runs || []).length" class="fhint">{{ t('這個資料夾裡還沒有備份。') }}</div>
             <div v-for="r in (bk?.runs || [])" :key="r.name" class="logrow">
               <span class="lu">{{ r.name }}</span>
               <span class="li">{{ fmtBytes(r.bytes) }}</span>
@@ -381,45 +382,43 @@ onMounted(load)
         <div v-else-if="tab === 'security'" class="body">
           <div class="card note">
             <div class="fhint">
-              每一次登入嘗試都會記錄，成功與失敗都有。<b>連續 5 次失敗後會開始鎖定</b>
-              （60 秒起，持續失敗逐步拉長到 1 小時），計算方式是「帳號 + 來源 IP」的組合
-              —— 只看帳號的話，任何人都能用亂猜把你的帳號鎖住。
+              {{ t('每一次登入嘗試都會記錄，成功與失敗都有。') }}<b>{{ t('連續 5 次失敗後會開始鎖定') }}</b>
+              {{ t('（60 秒起，持續失敗逐步拉長到 1 小時），計算方式是「帳號 + 來源 IP」的組合 —— 只看帳號的話，任何人都能用亂猜把你的帳號鎖住。') }}
             </div>
             <div class="fhint">
-              從網際網路連線請一律走 <b>https:// 的網址</b>（有正式憑證，全程加密）。
-              內網的 <b>http://…:8301</b> 仍是明文，只適合在自己家裡用。
+              {{ t('從網際網路連線請一律走') }} <b>{{ t('https:// 的網址') }}</b>{{ t('（有正式憑證，全程加密）。內網的') }} <b>http://…:8301</b> {{ t('仍是明文，只適合在自己家裡用。') }}
             </div>
           </div>
           <div class="loghead">
-            值得看一眼的事件
-            <span v-if="unseen" class="bad">· {{ unseen }} 筆未讀</span>
+            {{ t('值得看一眼的事件') }}
+            <span v-if="unseen" class="bad">· {{ t('{n} 筆未讀', { n: unseen }) }}</span>
             <span class="spacer"></span>
-            <button v-if="unseen" class="lnk" @click="markAlertsSeen">全部標為已讀</button>
+            <button v-if="unseen" class="lnk" @click="markAlertsSeen">{{ t('全部標為已讀') }}</button>
           </div>
           <div class="logbox alerts">
-            <div v-if="!alerts.length" class="fhint">目前沒有異常。</div>
+            <div v-if="!alerts.length" class="fhint">{{ t('目前沒有異常。') }}</div>
             <div v-for="a in alerts" :key="a.id" class="logrow alert">
               <span class="lt">{{ fmtWhen(a.at) }}</span>
-              <span class="lk">{{ a.label }}</span>
+              <span class="lk">{{ ts(a.label) }}</span>
               <span class="lu">{{ a.username || '—' }}</span>
               <span class="li">{{ a.ip || '' }}</span>
-              <span class="lr">{{ a.detail }}</span>
+              <span class="lr">{{ ts(a.detail) }}</span>
             </div>
           </div>
 
           <div class="loghead">
-            最近 {{ logs.length }} 筆
-            <span v-if="failed7d" class="bad">· 7 天內失敗 {{ failed7d }} 次</span>
+            {{ t('最近 {n} 筆', { n: logs.length }) }}
+            <span v-if="failed7d" class="bad">· {{ t('7 天內失敗 {n} 次', { n: failed7d }) }}</span>
             <span class="spacer"></span>
-            <button class="lnk" :disabled="logBusy" @click="loadLogs">重新整理</button>
+            <button class="lnk" :disabled="logBusy" @click="loadLogs">{{ t('重新整理') }}</button>
           </div>
           <div class="logbox">
-            <div v-if="!logs.length" class="fhint">還沒有任何紀錄。</div>
+            <div v-if="!logs.length" class="fhint">{{ t('還沒有任何紀錄。') }}</div>
             <div v-for="(e, i) in logs" :key="i" class="logrow" :class="{ bad: !e.ok }">
               <span class="lt">{{ fmtWhen(e.at) }}</span>
               <span class="lu" :title="e.username">{{ e.username }}</span>
               <span class="li">{{ e.ip }}</span>
-              <span class="lr">{{ e.ok ? '成功' : (e.reason || '失敗') }}</span>
+              <span class="lr">{{ e.ok ? t('成功') : (e.reason ? ts(e.reason) : t('失敗')) }}</span>
             </div>
           </div>
         </div>
@@ -430,24 +429,22 @@ onMounted(load)
                rather than reports lives behind the ?, opened right under its
                own row, because it is read once and then never again, while
                the numbers under the controls change as you type. -->
-          <div class="sec">縮圖表</div>
+          <div class="sec">{{ t('縮圖表') }}</div>
           <div class="card">
             <div class="item">
               <div class="line">
-                <label class="lab">取樣間隔（秒）
+                <label class="lab">{{ t('取樣間隔（秒）') }}
                   <button class="qmark" @click="toggleHelp('interval')">?</button>
                 </label>
                 <input type="number" v-model.number="sheetInterval" min="5" max="600" style="width:100px" />
               </div>
               <div class="fhint">
-                一張涵蓋 {{ Math.round(sheetInterval * 12 / 60) }} 分鐘 ·
-                兩小時的影片約 {{ Math.max(1, Math.ceil(7200 / (sheetInterval * 12))) }} 張
+                {{ t('一張涵蓋 {n} 分鐘', { n: Math.round(sheetInterval * 12 / 60) }) }} ·
+                {{ t('兩小時的影片約 {n} 張', { n: Math.max(1, Math.ceil(7200 / (sheetInterval * 12))) }) }}
               </div>
               <div v-if="help === 'interval'" data-help="interval" class="helptbl">
                 <div class="hn">
-                  每 {{ sheetInterval }} 秒取一格、12 格拼成一張。間隔越短，畫面漏掉的越少，
-                  但張數與產生時間成正比增加 —— 這是<b>唯一能減少總工作量的設定</b>，
-                  其他選項都只是讓同樣的工作跑得快一點。
+                  {{ t('每 {n} 秒取一格、12 格拼成一張。間隔越短，畫面漏掉的越少，但張數與產生時間成正比增加 —— 這是', { n: sheetInterval }) }}<b>{{ t('唯一能減少總工作量的設定') }}</b>{{ t('，其他選項都只是讓同樣的工作跑得快一點。') }}
                 </div>
               </div>
             </div>
@@ -455,20 +452,20 @@ onMounted(load)
             <div class="item">
               <div class="line">
                 <label class="lab">
-                  每格寬度
+                  {{ t('每格寬度') }}
                   <button class="qmark" @click="toggleHelp('tile')">?</button>
                 </label>
                 <select v-model.number="sheetTileWidth" style="width:220px">
                   <option v-for="c in TILE_CHOICES" :key="c.w" :value="c.w">
-                    {{ c.w }} px（整張 {{ c.sheet }}）
+                    {{ t('{w} px（整張 {sheet}）', { w: c.w, sheet: c.sheet }) }}
                   </option>
                 </select>
               </div>
               <div v-if="help === 'tile'" data-help="tile" class="helptbl">
-                <div class="hh">實測（1920×1080 來源、4×3 格、123 分鐘的片共 11 張）</div>
+                <div class="hh">{{ t('實測（1920×1080 來源、4×3 格、123 分鐘的片共 11 張）') }}</div>
                 <table>
                   <thead>
-                    <tr><th>每格寬</th><th>整張尺寸</th><th>單張</th><th>11 張合計</th></tr>
+                    <tr><th>{{ t('每格寬') }}</th><th>{{ t('整張尺寸') }}</th><th>{{ t('單張') }}</th><th>{{ t('11 張合計') }}</th></tr>
                   </thead>
                   <tbody>
                     <tr v-for="c in TILE_CHOICES" :key="c.w"
@@ -479,8 +476,7 @@ onMounted(load)
                   </tbody>
                 </table>
                 <div class="hn">
-                  產生時間與寬度無關（都是約 2.8 秒）—— 成本在跳轉與解碼，縮放幾乎免費。
-                  改這個值不會覆蓋既有的縮圖表，而是另外產生一份新尺寸的。
+                  {{ t('產生時間與寬度無關（都是約 2.8 秒）—— 成本在跳轉與解碼，縮放幾乎免費。改這個值不會覆蓋既有的縮圖表，而是另外產生一份新尺寸的。') }}
                 </div>
               </div>
             </div>
@@ -488,124 +484,118 @@ onMounted(load)
             <div class="item">
               <div class="line">
                 <label class="lab">
-                  同時抓幾格
+                  {{ t('同時抓幾格') }}
                   <button class="qmark" @click="toggleHelp('worker')">?</button>
                 </label>
                 <input type="number" v-model.number="sheetWorkers" min="1"
                        :max="cpuCount || 12" step="1" style="width:100px" />
               </div>
               <div class="fhint">
-                <template v-if="cpuCount">這台機器有 {{ cpuCount }} 核 · </template>
-                超過 4 之後幾乎沒有差別 · 填 1 ＝關閉平行
+                <template v-if="cpuCount">{{ t('這台機器有 {n} 核', { n: cpuCount }) }} · </template>
+                {{ t('超過 4 之後幾乎沒有差別 · 填 1 ＝關閉平行') }}
               </div>
               <div v-if="help === 'worker'" data-help="worker" class="helptbl">
-                <div class="hh">實測（1080p、145 分鐘的片，產生一張縮圖表）</div>
+                <div class="hh">{{ t('實測（1080p、145 分鐘的片，產生一張縮圖表）') }}</div>
                 <table>
                   <thead>
-                    <tr><th>同時幾格</th><th>本機硬碟</th><th>NAS</th><th></th></tr>
+                    <tr><th>{{ t('同時幾格') }}</th><th>{{ t('本機硬碟') }}</th><th>NAS</th><th></th></tr>
                   </thead>
                   <tbody>
                     <tr v-for="w in WORKER_MEASURED" :key="w.n"
                         :class="{ cur: w.n === sheetWorkers }">
                       <td>{{ w.n }}</td><td>{{ w.local }}</td><td>{{ w.nas }}</td>
-                      <td>{{ w.note }}</td>
+                      <td>{{ w.note ? t(w.note) : '' }}</td>
                     </tr>
                   </tbody>
                 </table>
                 <div class="hn">
-                  一張表要抓 12 格，每格都是獨立的 ffmpeg，所以同時跑會快。但探測與拼貼
-                  <b>不能平行</b>，它們替整體時間設下地板 —— 這就是 4 之後拉平的原因。
-                  <br>這個設定<b>不影響產出的圖</b>，只改產生的順序；既有的縮圖表不會失效，
-                  改完不用重啟，下一張就套用。
-                  <br>選 GPU 時這個數字會另外<b>夾在 4</b>：顯示記憶體不像 CPU，用完是整台
-                  機器倒下，一路 4K 解碼約佔 400 MiB。
+                  {{ t('一張表要抓 12 格，每格都是獨立的 ffmpeg，所以同時跑會快。但探測與拼貼') }}
+                  <b>{{ t('不能平行') }}</b>{{ t('，它們替整體時間設下地板 —— 這就是 4 之後拉平的原因。') }}
+                  <br>{{ t('這個設定') }}<b>{{ t('不影響產出的圖') }}</b>{{ t('，只改產生的順序；既有的縮圖表不會失效，改完不用重啟，下一張就套用。') }}
+                  <br>{{ t('選 GPU 時這個數字會另外') }}<b>{{ t('夾在 4') }}</b>{{ t('：顯示記憶體不像 CPU，用完是整台機器倒下，一路 4K 解碼約佔 400 MiB。') }}
                 </div>
               </div>
             </div>
 
             <div class="item">
-              <label class="lab">運算方式
+              <label class="lab">{{ t('運算方式') }}
                 <button class="qmark" @click="toggleHelp('hw')">?</button>
               </label>
               <div class="hwrow">
                 <label class="hw" :class="{ on: sheetHwaccel === 'cpu' }">
                   <input type="radio" value="cpu" v-model="sheetHwaccel" />
-                  <b>CPU</b><span>快一點，但會吃掉大部分核心</span>
+                  <b>CPU</b><span>{{ t('快一點，但會吃掉大部分核心') }}</span>
                 </label>
                 <label class="hw" :class="{ on: sheetHwaccel === 'gpu' }">
                   <input type="radio" value="gpu" v-model="sheetHwaccel" />
-                  <b>GPU</b><span>慢約三成，但幾乎不佔 CPU</span>
+                  <b>GPU</b><span>{{ t('慢約三成，但幾乎不佔 CPU') }}</span>
                 </label>
               </div>
               <div v-if="help === 'hw'" data-help="hw" class="helptbl">
-                <div class="hh">實測（同一支 4K 影片、12 格一張）</div>
+                <div class="hh">{{ t('實測（同一支 4K 影片、12 格一張）') }}</div>
                 <table>
                   <thead>
-                    <tr><th></th><th>耗時</th><th>燒掉的 CPU</th><th>約佔幾核</th></tr>
+                    <tr><th></th><th>{{ t('耗時') }}</th><th>{{ t('燒掉的 CPU') }}</th><th>{{ t('約佔幾核') }}</th></tr>
                   </thead>
                   <tbody>
                     <tr :class="{ cur: sheetHwaccel === 'cpu' }">
-                      <td>CPU</td><td>3.60 秒</td><td>37.0 秒</td><td>10.3</td></tr>
+                      <td>CPU</td><td>{{ t('{n} 秒', { n: '3.60' }) }}</td><td>{{ t('{n} 秒', { n: '37.0' }) }}</td><td>10.3</td></tr>
                     <tr :class="{ cur: sheetHwaccel === 'gpu' }">
-                      <td>GPU</td><td>4.60 秒</td><td>3.4 秒</td><td>0.7</td></tr>
+                      <td>GPU</td><td>{{ t('{n} 秒', { n: '4.60' }) }}</td><td>{{ t('{n} 秒', { n: '3.4' }) }}</td><td>0.7</td></tr>
                   </tbody>
                 </table>
                 <div class="hn">
-                  <b>GPU 比較慢，選它是為了把核心讓出來</b> —— 多人同時使用、或一邊在轉檔／
-                  壓縮時，這個差別遠比那一秒重要。
-                  <br>省下的 CPU 跟解析度有關：4K 省 10.6 倍，1080p 以下幾乎沒有差別
-                  （固定成本是開行程、解析容器、編 JPEG，那些 GPU 幫不上忙）。
-                  <br>影片解碼走顯示卡上的專用區塊（NVDEC），跟遊戲用的運算核心是分開的。
-                  NVDEC 不支援的編碼會<b>自動退回 CPU</b>，不會因此產不出縮圖表。
-                  <br>這個選擇<b>也套用到「影片處理」的完整解碼檢查</b>：同樣是「誰來負擔解碼」，
-                  那邊 CPU 每支吃掉 5～9 核、GPU 不到半核，找出的損壞一樣。
+                  <b>{{ t('GPU 比較慢，選它是為了把核心讓出來') }}</b>{{ t(' —— 多人同時使用、或一邊在轉檔／壓縮時，這個差別遠比那一秒重要。') }}
+                  <br>{{ t('省下的 CPU 跟解析度有關：4K 省 10.6 倍，1080p 以下幾乎沒有差別（固定成本是開行程、解析容器、編 JPEG，那些 GPU 幫不上忙）。') }}
+                  <br>{{ t('影片解碼走顯示卡上的專用區塊（NVDEC），跟遊戲用的運算核心是分開的。NVDEC 不支援的編碼會') }}<b>{{ t('自動退回 CPU') }}</b>{{ t('，不會因此產不出縮圖表。') }}
+                  <br>{{ t('這個選擇') }}<b>{{ t('也套用到「影片處理」的完整解碼檢查') }}</b>{{ t('：同樣是「誰來負擔解碼」，那邊 CPU 每支吃掉 5～9 核、GPU 不到半核，找出的損壞一樣。') }}
                 </div>
               </div>
             </div>
           </div>
 
-          <div class="sec">快取上限</div>
+          <div class="sec">{{ t('快取上限') }}</div>
           <div class="card">
             <div class="item">
               <div class="line">
-                <label class="lab">縮圖表快取上限（GB）
+                <label class="lab">{{ t('縮圖表快取上限（GB）') }}
                   <button class="qmark" @click="toggleHelp('sheets')">?</button>
                 </label>
                 <input type="number" v-model.number="sheetLimitGb" min="0.1" max="200"
                        step="0.5" style="width:100px" />
               </div>
               <div class="fhint usage">
-                目前用量 <b>{{ fmtBytes(usedOf('sheets')) }}</b> / {{ sheetLimitGb }} GB
+                {{ t('目前用量') }} <b>{{ fmtBytes(usedOf('sheets')) }}</b> / {{ sheetLimitGb }} GB
               </div>
               <CacheHelp v-if="help === 'sheets'" data-help="sheets" />
             </div>
 
             <div class="item">
               <div class="line">
-                <label class="lab">影片縮圖快取上限（GB）
+                <label class="lab">{{ t('影片縮圖快取上限（GB）') }}
                   <button class="qmark" @click="toggleHelp('thumbs')">?</button>
                 </label>
                 <input type="number" v-model.number="thumbLimitGb" min="0.1" max="200"
                        step="0.5" style="width:100px" />
               </div>
               <div class="fhint usage">
-                目前用量 <b>{{ fmtBytes(usedOf('thumbs')) }}</b> / {{ thumbLimitGb }} GB
+                {{ t('目前用量') }} <b>{{ fmtBytes(usedOf('thumbs')) }}</b> / {{ thumbLimitGb }} GB
               </div>
               <CacheHelp v-if="help === 'thumbs'" data-help="thumbs" />
             </div>
 
             <div class="item">
               <div class="line">
-                <label class="lab">照片縮圖快取上限（GB）
+                <label class="lab">{{ t('照片縮圖快取上限（GB）') }}
                   <button class="qmark" @click="toggleHelp('photos')">?</button>
                 </label>
                 <input type="number" v-model.number="photoLimitGb" min="0.1" max="200"
                        step="0.5" style="width:100px" />
               </div>
               <div class="fhint usage">
-                目前用量 <b>{{ fmtBytes(usedOf('photos')) }}</b> / {{ photoLimitGb }} GB
-                ·　壓縮試看片段 <b>{{ fmtBytes(usedOf('shrink_samples')) }}</b> / 0.5 GB（固定）
-                ·　圖庫頭像候選 <b>{{ fmtBytes(usedOf('gfriends')) }}</b> / 0.3 GB（固定）
+                {{ t('目前用量') }} <b>{{ fmtBytes(usedOf('photos')) }}</b> / {{ photoLimitGb }} GB
+                ·　{{ t('壓縮試看片段') }} <b>{{ fmtBytes(usedOf('shrink_samples')) }}</b> / {{ t('{n} GB（固定）', { n: '0.5' }) }}
+                ·　{{ t('圖庫頭像候選') }} <b>{{ fmtBytes(usedOf('gfriends')) }}</b> / {{ t('{n} GB（固定）', { n: '0.3' }) }}
               </div>
               <CacheHelp v-if="help === 'photos'" data-help="photos" />
             </div>
@@ -614,7 +604,7 @@ onMounted(load)
               <!-- not "清理": it applies the limits, and when nothing is over
                    them the correct outcome is to delete nothing -->
               <button class="lnk flat" :disabled="sweeping" @click="sweepCache">
-                {{ sweeping ? '處理中…' : '立即套用上限' }}
+                {{ sweeping ? t('處理中…') : t('立即套用上限') }}
               </button>
               <div v-if="sweepMsg" class="fhint sweepmsg">{{ sweepMsg }}</div>
             </div>
@@ -623,41 +613,41 @@ onMounted(load)
           <div v-if="error" class="err">{{ error }}</div>
         </div>
 
-        <div v-else-if="loading" class="msg">載入中…</div>
+        <div v-else-if="loading" class="msg">{{ t('載入中…') }}</div>
         <div v-else class="body">
-          <div class="sec">資料夾</div>
+          <div class="sec">{{ t('資料夾') }}</div>
           <div class="card">
             <div class="item">
-              <label class="lab">待分類資料夾（新影片放這裡，每行一個）</label>
+              <label class="lab">{{ t('待分類資料夾（新影片放這裡，每行一個）') }}</label>
               <textarea v-model="inbox" rows="3" placeholder="D:\PORN"></textarea>
             </div>
             <div class="item">
-              <label class="lab">歸檔根目錄（角色資料夾會建在這些位置下，每行一個）</label>
+              <label class="lab">{{ t('歸檔根目錄（角色資料夾會建在這些位置下，每行一個）') }}</label>
               <textarea v-model="archive" rows="4" placeholder="G:\Social Media"></textarea>
             </div>
             <div class="item">
-              <label class="lab">新角色資料夾預設建在哪個根目錄</label>
+              <label class="lab">{{ t('新角色資料夾預設建在哪個根目錄') }}</label>
               <select v-model="defaultArchive">
-                <option value="">（自動：使用第一個歸檔根目錄）</option>
+                <option value="">{{ t('（自動：使用第一個歸檔根目錄）') }}</option>
                 <option v-for="r in archiveRootList" :key="r" :value="r">{{ r }}</option>
               </select>
               <div v-if="defaultArchive && !archiveRootList.includes(defaultArchive)" class="warn">
-                目前的預設根目錄不在上方清單中，歸檔時會自動改用第一個歸檔根目錄
+                {{ t('目前的預設根目錄不在上方清單中，歸檔時會自動改用第一個歸檔根目錄') }}
               </div>
             </div>
           </div>
 
-          <div class="sec">瀏覽與播放</div>
+          <div class="sec">{{ t('瀏覽與播放') }}</div>
           <div class="card">
             <div class="item line">
-              <label class="lab">點選角色後預設顯示的分頁</label>
+              <label class="lab">{{ t('點選角色後預設顯示的分頁') }}</label>
               <select v-model="defaultTab" style="width:160px">
-                <option value="videos">影片</option>
-                <option value="profile">個人資料</option>
+                <option value="videos">{{ t('影片') }}</option>
+                <option value="profile">{{ t('個人資料') }}</option>
               </select>
             </div>
             <div class="item line">
-              <label class="lab">方向鍵快進/快退秒數</label>
+              <label class="lab">{{ t('方向鍵快進/快退秒數') }}</label>
               <input type="number" v-model.number="seekSeconds" min="1" max="300" style="width:100px" />
             </div>
           </div>
@@ -668,12 +658,12 @@ onMounted(load)
         <div class="foot">
           <template v-if="tab === 'paths' || tab === 'sheet'">
             <button class="btn" :disabled="saving || loading" @click="save">
-              {{ saving ? '儲存中…' : 'OK' }}
+              {{ saving ? t('儲存中…') : 'OK' }}
             </button>
             <button class="btn ghost" @click="emit('close')">Cancel</button>
           </template>
           <!-- the user tab saves each change on its own -->
-          <button v-else class="btn" @click="emit('close')">關閉</button>
+          <button v-else class="btn" @click="emit('close')">{{ t('關閉') }}</button>
         </div>
   </SideDialog>
 </template>

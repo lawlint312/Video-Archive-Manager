@@ -27,6 +27,7 @@ import VideoDupPanel from './VideoDupPanel.vue'
 import ImageDupPanel from './ImageDupPanel.vue'
 import RelationDupPanel from './RelationDupPanel.vue'
 import SideDialog from './SideDialog.vue'
+import { t } from '../i18n'
 
 const props = defineProps({
   // which tab to land on; the header button passes whichever count it showed
@@ -46,20 +47,20 @@ const imageCount = computed(() => (store.imgdedup.groups || [])
 // A scan running on the other page has to stay visible from here, because
 // both can run at once: a spinner and 掃描中 on its entry, else the count.
 const TABS = computed(() => [
-  { key: 'video', icon: 'film', label: '影片',
-    spinning: store.dedup.running, note: store.dedup.running ? '掃描中' : '',
+  { key: 'video', icon: 'film', label: t('影片'),
+    spinning: store.dedup.running, note: store.dedup.running ? t('掃描中') : '',
     badge: videoCount.value },
-  { key: 'image', icon: 'image', label: '圖片',
-    spinning: store.imgdedup.running, note: store.imgdedup.running ? '掃描中' : '',
+  { key: 'image', icon: 'image', label: t('圖片'),
+    spinning: store.imgdedup.running, note: store.imgdedup.running ? t('掃描中') : '',
     badge: imageCount.value },
   // No scan behind it: AVBase's stored relations against the library index
-  { key: 'relation', icon: 'link', label: '同內容不同番號' },
+  { key: 'relation', icon: 'link', label: t('同內容不同番號') },
 ])
 </script>
 
 <template>
   <!-- Never locked: these scans carry on in the background on purpose -->
-  <SideDialog title="重複掃描" :items="TABS" v-model="tab"
+  <SideDialog :title="t('重複掃描')" :items="TABS" v-model="tab"
               width="1340px" height="1000px" pad="16px" @close="emit('close')">
     <!-- Kept alive: switching pages must not throw away a report you are
          partway through acting on. Each panel keeps its own scroller — a

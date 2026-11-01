@@ -124,6 +124,25 @@ check("29 Feb in a common year", ip.age_from_dob("2001-02-29", today),
 check("year in the future", ip.age_from_dob("2099-01-01", today), None)
 check("not a date at all", ip.age_from_dob("soon", today), None)
 
+print("\nshort forms typed by hand are stored in the long form")
+check("1996", ip.normalize_dob("1996"), "1996-??-??")
+check("1996-03", ip.normalize_dob("1996-03"), "1996-03-??")
+check("1996/3/9", ip.normalize_dob(" 1996/3/9 "), "1996-03-09")
+check("long form untouched", ip.normalize_dob("2000-??-??"), "2000-??-??")
+check("junk untouched", ip.normalize_dob("soon"), "soon")
+check("saved by the editor", ip.clean_profile({"dob": "1996", "cup": "F"}),
+      {"dob": "1996-??-??", "cup": "F"})
+check("only the birthday is rewritten", ip.clean_profile({"height": "1996"}),
+      {"height": "1996"})
+check("an old short value still gives an age", ip.age_from_dob("1996", today),
+      {"age": 30, "approx": True})
+check("month known, month passed: exact", ip.age_from_dob("1996-03", today),
+      {"age": 30, "approx": False})
+check("month known, month to come: exact", ip.age_from_dob("1996-11", today),
+      {"age": 29, "approx": False})
+check("in the birth month: approximate", ip.age_from_dob("1996-08", today),
+      {"age": 30, "approx": True})
+
 print("\nvote thresholds (the seed disaster is why these exist)")
 check("needs at least 3 films", ip.MIN_FILMS, 3)
 check("needs a 60% majority", ip.MIN_SHARE, 0.60)

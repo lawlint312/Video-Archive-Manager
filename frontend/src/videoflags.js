@@ -12,6 +12,7 @@
 
 // explicit extension: node's ESM resolver needs it (tests import this file)
 import { relSummary, relLabel } from './relinfo.js'
+import { t, N_ } from './i18n.js'
 
 // Five seconds of actual playback. Not "the player was opened": on a phone a
 // mis-tap opens and closes a video in well under a second, and there is no way
@@ -68,10 +69,11 @@ export function createWatchGate({ seconds = WATCH_SECONDS, onReach } = {}) {
  * keep. Unknown modes fall through to everything rather than to nothing: a
  * stale value in localStorage should not present an empty library.
  */
+// labels are keys: shown through t() so they follow the language
 export const FILTERS = [
-  ['all', '全部'],
-  ['unwatched', '未看過'],
-  ['fav', '我的最愛'],
+  ['all', N_('全部')],
+  ['unwatched', N_('未看過')],
+  ['fav', N_('我的最愛')],
 ]
 
 export function filterVideos(videos, mode) {
@@ -129,8 +131,8 @@ export async function postFav(api, path, on) {
  */
 export function markIcons(v) {
   if (!v) return []
-  if (v.fav) return [{ key: 'fav', icon: 'heart', cls: 'mk fav', title: '我的最愛' }]
-  if (v.watched) return [{ key: 'seen', icon: 'eye', cls: 'mk seen', title: '看過' }]
+  if (v.fav) return [{ key: 'fav', icon: 'heart', cls: 'mk fav', title: t('我的最愛') }]
+  if (v.watched) return [{ key: 'seen', icon: 'eye', cls: 'mk seen', title: t('看過') }]
   return []
 }
 
@@ -141,7 +143,7 @@ export function markIcons(v) {
  */
 export function relTag(v) {
   if (!v || !v.rel || !v.rel.length) return null
-  return { text: relLabel(v.rel), title: '收錄關係：' + relSummary(v.rel) }
+  return { text: relLabel(v.rel), title: t('收錄關係：') + relSummary(v.rel) }
 }
 
 /**
@@ -163,19 +165,18 @@ export function favGuard(v, role) {
 }
 
 /** The text for each case; one wording for the grid and the preview panel. */
-export function favGuardMessage(name, g, where = '開啟影片、在備忘那一列') {
+export function favGuardMessage(name, g, where = t('開啟影片、在備忘那一列')) {
   if (g.kind === 'own') {
-    return `「${name}」已標為我的最愛，不會被刪除。\n\n` +
-           `如果確定要刪，請先${where}點一下愛心取消最愛。`
+    return t('「{name}」已標為我的最愛，不會被刪除。\n\n如果確定要刪，請先{where}點一下愛心取消最愛。',
+             { name, where })
   }
   if (g.kind === 'others' && g.canForce) {
-    return `「${name}」有 ${g.count} 位使用者加入了我的最愛。\n\n` +
-           `刪除後他們的最愛也會一起消失，而且無法復原。\n` +
-           `這次刪除會記錄在「登入紀錄 → 值得看一眼的事件」。\n\n確定要刪除嗎？`
+    return t('「{name}」有 {n} 位使用者加入了我的最愛。\n\n刪除後他們的最愛也會一起消失，而且無法復原。\n這次刪除會記錄在「登入紀錄 → 值得看一眼的事件」。\n\n確定要刪除嗎？',
+             { name, n: g.count })
   }
   if (g.kind === 'others') {
-    return `「${name}」有 ${g.count} 位使用者加入了我的最愛，不會被刪除。\n\n` +
-           `只有管理員可以確認後刪除。`
+    return t('「{name}」有 {n} 位使用者加入了我的最愛，不會被刪除。\n\n只有管理員可以確認後刪除。',
+             { name, n: g.count })
   }
   return ''
 }

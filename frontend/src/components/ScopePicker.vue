@@ -19,6 +19,7 @@ import { api, errText } from '../api'
 import { isPicked, togglePath, applyAll, visibleItems,
          rootCounts } from '../scopefilter'
 import Icon from './Icon.vue'
+import { t } from '../i18n'
 
 const props = defineProps({
   storageKey: { type: String, required: true },   // per-dialog memory
@@ -96,7 +97,7 @@ onMounted(async () => {
     chars.value = s.chars
     emit('update:selected', selected.value)
   } catch (e) {
-    error.value = '無法載入資料夾清單：' + errText(e)
+    error.value = t('無法載入資料夾清單：') + errText(e)
   }
 })
 
@@ -109,30 +110,30 @@ defineExpose({ inboxOn, charsOn, selected })
 
     <div class="tally" :class="{ none: !selected.length }">
       <Icon :name="selected.length ? 'checked' : 'warn'" :size="13" />
-      已選 <b>{{ selected.length }}</b> / {{ all.length }} 個資料夾
-      <span v-if="!selected.length" class="hint">— 請勾選要處理的資料夾</span>
+      {{ t('已選') }} <b>{{ selected.length }}</b> {{ t('/ {n} 個資料夾', { n: all.length }) }}
+      <span v-if="!selected.length" class="hint">{{ t('— 請勾選要處理的資料夾') }}</span>
       <span class="spacer"></span>
       <button class="lnk" :class="{ on: onlySelected }"
               @click="onlySelected = !onlySelected">
-        {{ onlySelected ? '顯示全部' : '只看已選' }}
+        {{ onlySelected ? t('顯示全部') : t('只看已選') }}
       </button>
     </div>
 
     <!-- search -->
     <div class="search">
       <Icon name="search" :size="13" />
-      <input v-model="q" :disabled="disabled" placeholder="搜尋名稱或路徑…" />
-      <button v-if="q" class="x" @click="q = ''" title="清除">×</button>
+      <input v-model="q" :disabled="disabled" :placeholder="t('搜尋名稱或路徑…')" />
+      <button v-if="q" class="x" @click="q = ''" :title="t('清除')">×</button>
       <span v-if="filtering" class="hint">
-        顯示 {{ shownChars.length + shownInbox.length }} 個
+        {{ t('顯示 {n} 個', { n: shownChars.length + shownInbox.length }) }}
       </span>
-      <button v-if="filtering" class="lnk" @click="clearFilters">清除篩選</button>
+      <button v-if="filtering" class="lnk" @click="clearFilters">{{ t('清除篩選') }}</button>
     </div>
 
     <!-- per-root chips -->
     <div v-if="roots.length > 1" class="chips">
       <button class="chip" :class="{ on: !rootFilter }" @click="rootFilter = ''">
-        全部 {{ chars.length }}
+        {{ t('全部 {n}', { n: chars.length }) }}
       </button>
       <button v-for="r in roots" :key="r.label" class="chip"
               :class="{ on: rootFilter === r.label }"
@@ -143,10 +144,10 @@ defineExpose({ inboxOn, charsOn, selected })
 
     <section v-if="shownInbox.length">
       <div class="shead">
-        <span class="ib"><Icon name="inbox" :size="14" /> 待分類資料夾</span>
+        <span class="ib"><Icon name="inbox" :size="14" /> {{ t('待分類資料夾') }}</span>
         <span class="allbtns">
-          <button class="lnk" @click="setAll(shownInbox, true)">全選</button>
-          <button class="lnk" @click="setAll(shownInbox, false)">全不選</button>
+          <button class="lnk" @click="setAll(shownInbox, true)">{{ t('全選') }}</button>
+          <button class="lnk" @click="setAll(shownInbox, false)">{{ t('全不選') }}</button>
         </span>
       </div>
       <label v-for="i in shownInbox" :key="i.path" class="row-chk">
@@ -158,16 +159,16 @@ defineExpose({ inboxOn, charsOn, selected })
 
     <section>
       <div class="shead">
-        <span class="ib"><Icon name="folder" :size="14" /> 歸檔資料夾</span>
+        <span class="ib"><Icon name="folder" :size="14" /> {{ t('歸檔資料夾') }}</span>
         <!-- the counts are load-bearing: with a filter on, these buttons act
              on what is shown, and silently selecting all 766 would be bad -->
         <span class="allbtns">
-          <span v-if="filtering" class="scopehint">（僅作用於顯示中的）</span>
+          <span v-if="filtering" class="scopehint">{{ t('（僅作用於顯示中的）') }}</span>
           <button class="lnk" @click="setAll(shownChars, true)">
-            全選 {{ shownChars.length }}
+            {{ t('全選 {n}', { n: shownChars.length }) }}
           </button>
           <button class="lnk" @click="setAll(shownChars, false)">
-            全不選 {{ shownChars.length }}
+            {{ t('全不選 {n}', { n: shownChars.length }) }}
           </button>
         </span>
       </div>
@@ -180,11 +181,11 @@ defineExpose({ inboxOn, charsOn, selected })
                what tells those rows apart, which a truncated path did not -->
           <span class="root" :title="c.path">{{ c.root_label }}</span>
         </label>
-        <div v-if="!chars.length" class="dimline">（沒有歸檔資料夾）</div>
+        <div v-if="!chars.length" class="dimline">{{ t('（沒有歸檔資料夾）') }}</div>
         <div v-else-if="!shownChars.length" class="dimline">
           {{ onlySelected && !q && !rootFilter
-             ? '目前沒有勾選任何歸檔資料夾。'
-             : '沒有符合的資料夾。' }}
+             ? t('目前沒有勾選任何歸檔資料夾。')
+             : t('沒有符合的資料夾。') }}
         </div>
       </div>
     </section>

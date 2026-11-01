@@ -15,8 +15,10 @@ import { toggle as pickToggle, selectAll, targets, chunk,
          applyResult, resultMessage } from '../photobatch'
 import { sortMedia, nextSort } from '../photosort'
 import { flatItems, buildAlbums, albumsApply, sortAlbums, nextAlbumSort,
-         albumCaption } from '../albums'
+         albumCaption, albumName } from '../albums'
 import Icon from './Icon.vue'
+import { t } from '../i18n'
+import { ts } from '../serverstrings.js'
 import SimilarDialog from './SimilarDialog.vue'
 
 const props = defineProps({ folder: { type: String, required: true } })
@@ -194,7 +196,7 @@ async function saveCrop(pos) {
     const d = await api(`/api/profile/photo?folder=${encodeURIComponent(props.folder)}`,
       { method: 'POST', body: JSON.stringify({ pos }) })
     info.value = { ...info.value, profile_photo_pos: d.profile_photo_pos }
-  } catch (e) { alert('儲存失敗：' + errText(e)) }
+  } catch (e) { alert(t('儲存失敗：') + errText(e)) }
 }
 
 async function load() {
@@ -240,11 +242,13 @@ function startEdit() {
   loadVocab()
   const p = info.value.profile || {}
   profStr.value = Object.fromEntries(FIELD_ORDER.map(k => [k, p[k] || '']))
+  // stored as 1996-??-??, edited as typed: 1996
+  profStr.value.dob = profStr.value.dob.replace(/(-\?\?)+$/, '')
   editing.value = true
 }
 
 function clearProfile() {
-  if (!confirm('清除這位角色的「個人資料」欄位？\n\n只會清掉這一區，別名與標籤不受影響。')) return
+  if (!confirm(t('清除這位角色的「個人資料」欄位？\n\n只會清掉這一區，別名與標籤不受影響。'))) return
   for (const k of FIELD_ORDER) profStr.value[k] = ''
   save()
 }
@@ -271,13 +275,14 @@ async function save() {
     // folderPoster is deliberately not touched: the save response does not
     // carry it, and editing 個資 fields cannot change what is in the folder.
     editing.value = false
-  } catch (e) { alert('儲存失敗：' + errText(e)) }
+  } catch (e) { alert(t('儲存失敗：') + errText(e)) }
 }
 
 // ── delete mode (shared with the videos tab via the store) ─────────────────
 async function doDelete(m) {
-  const kind = m.is_video ? '影片' : '照片'
-  if (!confirm(`確定永久刪除這個${kind}？此操作無法復原。\n\n${m.name || m.path}`)) return
+  const ask = m.is_video ? t('確定永久刪除這部影片？此操作無法復原。')
+                         : t('確定永久刪除這張照片？此操作無法復原。')
+  if (!confirm(ask + `\n\n${m.name || m.path}`)) return
   try {
     // a video open in the viewer holds the file, and Windows will not delete
     // it then; photos are read once and released, so they need no such care
@@ -297,10 +302,10 @@ async function doDelete(m) {
         m.path.endsWith(info.value.profile_photo.replace(/\//g, '\\'))) {
       info.value.profile_photo = ''
     }
-    setStatus(`已刪除 ${m.name || m.path}`, 'warn')
+    setStatus(t('已刪除 {name}', { name: m.name || m.path }), 'warn')
   } catch (e) {
-    setStatus('刪除失敗：' + errText(e), 'warn')
-    alert('刪除失敗：' + errText(e))
+    setStatus(t('刪除失敗：') + errText(e), 'warn')
+    alert(t('刪除失敗：') + errText(e))
   }
 }
 
@@ -310,7 +315,7 @@ async function setAvatar(item) {
       { method: 'POST', body: JSON.stringify({ photo_path: item.path }) })
     await load()
     showCrop.value = true      // like Instagram: choose the framing right away
-  } catch (e) { alert('設定失敗：' + errText(e)) }
+  } catch (e) { alert(t('設定失敗：') + errText(e)) }
 }
 
 /* ── person filter ───────────────────────────────────────────────────────────
@@ -386,7 +391,7 @@ async function loadSimilarGroups() {
     if (folder !== props.folder) return        // switched character meanwhile
     similarGroups.value = d.groups || {}
   } catch (e) {
-    setStatus('相似排序讀取失敗：' + errText(e), 'warn')
+    setStatus(t('相似排序讀取失敗：') + errText(e), 'warn')
   }
 }
 
@@ -401,7 +406,7 @@ function onSimilarApplied({ threshold, groups }) {
   similarGroups.value = groups || {}
   sort.value = sort.value.by === 'similar' ? sort.value : { by: 'similar', dir: 'desc' }
   showSimilar.value = false
-  setStatus(`相似排序已套用（門檻 ${threshold}）`, 'ok')
+  setStatus(t('相似排序已套用（門檻 {n}）', { n: threshold }), 'ok')
 }
 
 // The flat grid: set videos dropped, so it is exactly what it was before the
@@ -437,7 +442,7 @@ async function loadPersonFlags() {
 async function scanPerson() {
   personError.value = ''
   scanningPerson.value = true
-  personProgress.value = '啟動中…'
+  personProgress.value = t('啟動中…')
   try {
     const { job_id } = await api('/api/person/scan', {
       method: 'POST',
@@ -447,13 +452,13 @@ async function scanPerson() {
       await new Promise(r => setTimeout(r, 700))
       const j = await api(`/api/person/job/${job_id}`)
       const p = j.progress
-      if (p && p.total) personProgress.value = `辨識中 ${p.done} / ${p.total}`
+      if (p && p.total) personProgress.value = t('辨識中 {done} / {total}', { done: p.done, total: p.total })
       if (j.status === 'done' || j.status === 'cancelled') break
-      if (j.status === 'error') { personError.value = j.error || '辨識失敗'; break }
+      if (j.status === 'error') { personError.value = ts(j.error) || t('辨識失敗'); break }
     }
     await loadPersonFlags()
   } catch (e) {
-    personError.value = '人物辨識失敗：' + errText(e)
+    personError.value = t('人物辨識失敗：') + errText(e)
   } finally {
     scanningPerson.value = false
     personProgress.value = ''
@@ -497,8 +502,8 @@ async function deletePicked() {
   // the intersection, not just what is ticked: see photobatch.targets
   const paths = targets(shownMedia.value, picked.value)
   if (!paths.length) return
-  if (!confirm(`永久刪除選取的 ${paths.length} 張照片？\n\n` +
-               `此操作無法復原，不會進資源回收筒。`)) return
+  if (!confirm(t('永久刪除選取的 {n} 張照片？\n\n此操作無法復原，不會進資源回收筒。',
+                 { n: paths.length }))) return
   deleting.value = true
   delErrors.value = {}
   const gone = new Set()
@@ -508,7 +513,7 @@ async function deletePicked() {
     let done = 0
     for (const batch of chunk(paths, 25)) {
       done += batch.length
-      delProgress.value = `刪除中 ${done} / ${paths.length}`
+      delProgress.value = t('刪除中 {done} / {total}', { done, total: paths.length })
       const r = await api('/api/media/delete', {
         method: 'POST', body: JSON.stringify({ paths: batch }),
       })
@@ -516,7 +521,7 @@ async function deletePicked() {
       for (const e of r.errors || []) delErrors.value[e.path] = e.error
     }
   } catch (e) {
-    alert('刪除失敗：' + errText(e))
+    alert(t('刪除失敗：') + errText(e))
   } finally {
     deleting.value = false
     delProgress.value = ''
@@ -613,11 +618,11 @@ onMounted(async () => {
   try {
     const p = await api('/api/person/status')
     personAvailable.value = !!(p.deps && p.model)
-    personReason.value = p.reason || ''
+    personReason.value = ts(p.reason)
     personSlow.value = !!(p.deps && p.model && !p.gpu)
   } catch (e) {
     personAvailable.value = false
-    personReason.value = '無法取得人物偵測狀態：' + errText(e)
+    personReason.value = t('無法取得人物偵測狀態：') + errText(e)
   }
 })
 </script>
@@ -627,13 +632,13 @@ onMounted(async () => {
     <!-- header -->
     <div class="phead">
       <div class="avatar" :class="{ editable: canCrop }"
-           :title="canCrop ? '點擊調整大頭照位置' : ''"
+           :title="canCrop ? t('點擊調整大頭照位置') : ''"
            @click="canCrop && (showCrop = true)">
         <img v-if="avatarUrl" :src="avatarUrl"
              :class="{ plain: !info.profile_photo }"
              :style="avatarStyle" @load="onAvatarLoad" />
         <Icon v-else name="user" :size="52" class="ph" />
-        <span v-if="canCrop" class="avedit ib"><Icon name="pencil" :size="12" /> 調整</span>
+        <span v-if="canCrop" class="avedit ib"><Icon name="pencil" :size="12" /> {{ t('調整') }}</span>
       </div>
       <div class="pinfo">
         <div class="pname">{{ store.selectedChar?.name }}</div>
@@ -655,9 +660,9 @@ onMounted(async () => {
             <!-- Clickable, which is the whole change: a tag that cannot answer
                  "who else has this" is decoration, and the survey showed that
                  is exactly what these had become — 44 tags, none reused. -->
-            <button v-for="t in info.tags" :key="t" class="chip tagbtn"
-                    :title="`看看還有誰標了「${t}」`"
-                    @click.stop="browseTag(t)">{{ t }}</button>
+            <button v-for="tag in info.tags" :key="tag" class="chip tagbtn"
+                    :title="t('看看還有誰標了「{tag}」', { tag })"
+                    @click.stop="browseTag(tag)">{{ tag }}</button>
           </div>
           <!-- filled from javdatabase by the JAV個資查詢 tool; kept apart from the
                user's own tags so it stays obvious which is which -->
@@ -673,14 +678,14 @@ onMounted(async () => {
               </div>
             </div>
           </div>
-          <button v-if="canInfo" class="editbtn ib no-mobile" @click="startEdit"><Icon name="pencil" :size="13" /> 編輯資料</button>
+          <button v-if="canInfo" class="editbtn ib no-mobile" @click="startEdit"><Icon name="pencil" :size="13" /> {{ t('編輯資料') }}</button>
         </template>
 
         <template v-else>
-          <div class="field"><label>別名</label>
-            <input v-model="aliasStr" placeholder="逗號分隔" /></div>
-          <div class="field tagfield"><label>標籤</label>
-            <input ref="tagInput" v-model="tagStr" placeholder="逗號分隔"
+          <div class="field"><label>{{ t('別名') }}</label>
+            <input v-model="aliasStr" :placeholder="t('逗號分隔')" /></div>
+          <div class="field tagfield"><label>{{ t('標籤') }}</label>
+            <input ref="tagInput" v-model="tagStr" :placeholder="t('逗號分隔')"
                    autocomplete="off"
                    @input="onTagInput" @keydown="onTagKey"
                    @click="syncCaret" @keyup="syncCaret"
@@ -694,28 +699,28 @@ onMounted(async () => {
                   @mousedown="e => onSugDown(e, s.tag)"
                   @mouseenter="sugIdx = i">
                 <span class="st">{{ s.tag }}</span>
-                <span class="sn">{{ s.count }} 位</span>
+                <span class="sn">{{ t('{n} 位', { n: s.count }) }}</span>
               </li>
             </ul>
           </div>
-          <div class="field"><label>連結</label>
+          <div class="field"><label>{{ t('連結') }}</label>
             <textarea v-model="linkStr" rows="3"
-                      placeholder="一行一個網址&#10;https://www.instagram.com/xxx/"></textarea>
+                      :placeholder="t('一行一個網址') + '\nhttps://www.instagram.com/xxx/'"></textarea>
           </div>
-          <div class="fsep">個人資料<span class="fhint2">（可手動修改；再次執行「JAV個資查詢」時，已有內容的欄位一律跳過）</span></div>
+          <div class="fsep">{{ t('個人資料') }}<span class="fhint2">{{ t('（可手動修改；再次執行「JAV個資查詢」時，已有內容的欄位一律跳過）') }}</span></div>
           <div class="pgrid">
             <div v-for="k in FIELD_ORDER" :key="k" class="field">
-              <label>{{ FIELD_LABELS[k] }}</label>
+              <label>{{ t(FIELD_LABELS[k]) }}</label>
               <input v-model="profStr[k]"
-                     :placeholder="k === 'dob' ? '2000-01-31，只知年份可寫 2000-??-??' : ''" />
+                     :placeholder="k === 'dob' ? t('2000-01-31，只知年份或年月可寫 2000、2000-01') : ''" />
             </div>
           </div>
           <div class="erow">
-            <button class="btn ib" @click="save"><Icon name="check" :size="14" /> 儲存</button>
-            <button class="btn ghost" @click="editing = false">取消</button>
+            <button class="btn ib" @click="save"><Icon name="check" :size="14" /> {{ t('儲存') }}</button>
+            <button class="btn ghost" @click="editing = false">{{ t('取消') }}</button>
             <span class="spacer"></span>
             <button v-if="hasProfile" class="btn ghost danger" @click="clearProfile">
-              清除個人資料
+              {{ t('清除個人資料') }}
             </button>
           </div>
         </template>
@@ -727,24 +732,24 @@ onMounted(async () => {
       <!-- inside an album: the way back comes first, where the eye lands -->
       <template v-if="curAlbum">
         <button class="backbtn ib" @click="leaveAlbum">
-          <Icon name="chevronLeft" :size="13" /> 全部相簿</button>
-        <span class="aname" :title="curAlbum.name">{{ curAlbum.name }}</span>
+          <Icon name="chevronLeft" :size="13" /> {{ t('全部相簿') }}</button>
+        <span class="aname" :title="albumName(curAlbum)">{{ albumName(curAlbum) }}</span>
         <span class="acnt">{{ albumCaption(curAlbum) }}</span>
       </template>
       <span v-else-if="inAlbums" class="ib"><Icon name="camera" :size="13" />
-        {{ albums.length }} 本相簿 · {{ flat.length }} 張照片</span>
-      <span v-else class="ib"><Icon name="camera" :size="13" /> {{ shownMedia.length }} 個媒體<template
-        v-if="noPersonMode">（共 {{ flat.length }}）</template></span>
+        {{ t('{albums} 本相簿 · {photos} 張照片', { albums: albums.length, photos: flat.length }) }}</span>
+      <span v-else class="ib"><Icon name="camera" :size="13" /> {{ t('{n} 個媒體', { n: shownMedia.length }) }}<template
+        v-if="noPersonMode">{{ t('（共 {n}）', { n: flat.length }) }}</template></span>
       <span v-if="albumsOn && !curAlbum" class="tgroup fgroup">
         <button class="tbtn" :class="{ on: pageMode === 'albums' }"
-                @click="setPageMode('albums')">相簿</button>
+                @click="setPageMode('albums')">{{ t('相簿') }}</button>
         <button class="tbtn" :class="{ on: pageMode === 'all' }"
-                @click="setPageMode('all')">全部照片</button>
+                @click="setPageMode('all')">{{ t('全部照片') }}</button>
       </span>
       <!-- phone only: ends the first line (count + 相簿/全部照片) -->
       <span class="brk"></span>
       <span v-if="store.deleteMode" class="del-tag ib">
-        <Icon name="warn" :size="12" /> 刪除模式 — 點垃圾桶會永久刪除</span>
+        <Icon name="warn" :size="12" /> {{ t('刪除模式 — 點垃圾桶會永久刪除') }}</span>
       <span class="spacer"></span>
 
       <!-- Editor tools as one group, so on a phone they share a line instead
@@ -761,39 +766,39 @@ onMounted(async () => {
         <button v-if="person.noPerson.length || noPersonMode" class="pbtn no-mobile"
                 :class="{ on: noPersonMode }"
                 @click="noPersonMode = !noPersonMode"
-                title="模型判斷這些照片裡沒有人物 —— 請自己看過再刪">
-          <Icon name="user" :size="12" /> 沒有人物 {{ person.noPerson.length }}
+                :title="t('模型判斷這些照片裡沒有人物 —— 請自己看過再刪')">
+          <Icon name="user" :size="12" /> {{ t('沒有人物 {n}', { n: person.noPerson.length }) }}
         </button>
-        <span v-else class="pnone no-mobile">沒有人物 0</span>
-        <span v-if="person.pending" class="ppend no-mobile" :title="`${person.pending} 張還沒判斷過`">
-          {{ person.pending }} 張未判斷
+        <span v-else class="pnone no-mobile">{{ t('沒有人物 {n}', { n: 0 }) }}</span>
+        <span v-if="person.pending" class="ppend no-mobile" :title="t('{n} 張還沒判斷過', { n: person.pending })">
+          {{ t('{n} 張未判斷', { n: person.pending }) }}
         </span>
       </template>
       <button v-if="canPerson && personAvailable && !scanningPerson && !inAlbums"
               class="pbtn no-mobile" :class="{ on: confChanged }" @click="scanPerson">
         <Icon name="search" :size="12" />
-        {{ confChanged ? '用新門檻重新辨識'
-                       : (person.ready ? '重新辨識' : '辨識人物') }}
+        {{ confChanged ? t('用新門檻重新辨識')
+                       : (person.ready ? t('重新辨識') : t('辨識人物')) }}
       </button>
       <span v-if="scanningPerson" class="ppend ib no-mobile">
         <Icon name="spinner" :size="12" class="spin" /> {{ personProgress }}
       </span>
       <!-- Nothing at all is the worst answer to "why is there no button". -->
       <span v-if="canPerson && !personAvailable && personReason && !inAlbums" class="pnone no-mobile"
-            :title="personReason">人物辨識不可用</span>
+            :title="personReason">{{ t('人物辨識不可用') }}</span>
 
       <button v-if="canDel && mediaItems.length" class="delbtn"
               :class="{ on: store.deleteMode }"
               @click="store.deleteMode = !store.deleteMode">
         <Icon name="trash" :size="12" />
-        {{ store.deleteMode ? '結束刪除' : '刪除模式' }}
+        {{ store.deleteMode ? t('結束刪除') : t('刪除模式') }}
       </button>
       </span>
       <!-- Sort last in the row, the same order the video grid uses. The album
            list and the inside of an album sort on their own, unremembered. -->
       <span v-if="inAlbums && !curAlbum" class="tgroup sgroup">
-      <span class="slab">排序</span>
-      <button v-for="s in [['name', '名稱'], ['newest', '最近新增'], ['count', '數量']]"
+      <span class="slab">{{ t('排序') }}</span>
+      <button v-for="s in [['name', t('名稱')], ['newest', t('最近新增')], ['count', t('數量')]]"
               :key="s[0]" class="tbtn ib" :class="{ on: albumSort.by === s[0] }"
               @click="setAlbumSort(s[0])">
         {{ s[1] }}
@@ -801,8 +806,8 @@ onMounted(async () => {
       </button>
       </span>
       <span v-else-if="curAlbum && curAlbum.items.length > 1" class="tgroup sgroup">
-      <span class="slab">排序</span>
-      <button v-for="s in [['name', '名稱'], ['newest', '最近新增'], ['size', '大小']]"
+      <span class="slab">{{ t('排序') }}</span>
+      <button v-for="s in [['name', t('名稱')], ['newest', t('最近新增')], ['size', t('大小')]]"
               :key="s[0]" class="tbtn ib" :class="{ on: innerSort.by === s[0] }"
               @click="setInnerSort(s[0])">
         {{ s[1] }}
@@ -810,17 +815,17 @@ onMounted(async () => {
       </button>
       </span>
       <span v-else-if="!inAlbums && flat.length > 1" class="tgroup sgroup">
-      <span class="slab">排序</span>
-      <button v-for="s in [['newest', '最近新增'], ['name', '名稱'], ['size', '大小']]"
+      <span class="slab">{{ t('排序') }}</span>
+      <button v-for="s in [['newest', t('最近新增')], ['name', t('名稱')], ['size', t('大小')]]"
               :key="s[0]" class="tbtn ib" :class="{ on: sort.by === s[0] }"
               @click="setSort(s[0])">
         {{ s[1] }}
         <Icon v-if="sort.by === s[0]" :name="sort.dir === 'asc' ? 'up' : 'down'" :size="11" />
       </button>
       <button v-if="similarVisible" class="tbtn ib" :class="{ on: sort.by === 'similar' }"
-              :title="canPerson ? '設定相似門檻並掃描' : `相似照片排在一起（門檻 ${similarThreshold}）`"
+              :title="canPerson ? t('設定相似門檻並掃描') : t('相似照片排在一起（門檻 {n}）', { n: similarThreshold })"
               @click="setSort('similar')">
-        相似
+        {{ t('相似') }}
         <template v-if="sort.by === 'similar'">
           <Icon v-if="canPerson" name="settings" :size="11" />
           <Icon v-else :name="sort.dir === 'asc' ? 'up' : 'down'" :size="11" />
@@ -829,10 +834,10 @@ onMounted(async () => {
       <!-- In edit mode the 相似 button opens the dialog, so flipping direction
            needs its own control while that sort is active. -->
       <button v-if="canPerson && sort.by === 'similar'" class="tbtn ib"
-              :title="sort.dir === 'asc' ? '目前舊到新' : '目前新到舊'"
+              :title="sort.dir === 'asc' ? t('目前舊到新') : t('目前新到舊')"
               @click="sort = { by: 'similar', dir: sort.dir === 'asc' ? 'desc' : 'asc' }">
         <Icon :name="sort.dir === 'asc' ? 'up' : 'down'" :size="11" />
-        {{ sort.dir === 'asc' ? '舊到新' : '新到舊' }}
+        {{ sort.dir === 'asc' ? t('舊到新') : t('新到舊') }}
       </button>
       </span>
     </div>
@@ -844,19 +849,19 @@ onMounted(async () => {
          put in front of you. -->
     <div v-if="batchMode" class="pickbar">
       <span class="ib"><Icon name="checked" :size="13" />
-        已選 <b>{{ picked.size }}</b> / {{ shownMedia.length }}</span>
-      <button class="lnk" @click="pickAll(true)">全選</button>
-      <button class="lnk" @click="pickAll(false)">全不選</button>
+        {{ t('已選') }} <b>{{ picked.size }}</b> / {{ shownMedia.length }}</span>
+      <button class="lnk" @click="pickAll(true)">{{ t('全選') }}</button>
+      <button class="lnk" @click="pickAll(false)">{{ t('全不選') }}</button>
       <span class="spacer"></span>
       <span v-if="deleting" class="ppend ib">
         <Icon name="spinner" :size="12" class="spin" /> {{ delProgress }}</span>
       <button class="btn danger" :disabled="!picked.size || deleting"
               @click="deletePicked">
-        <Icon name="trash" :size="13" /> 刪除已選 {{ picked.size }} 張
+        <Icon name="trash" :size="13" /> {{ t('刪除已選 {n} 張', { n: picked.size }) }}
       </button>
     </div>
     <div v-if="batchMode" class="pickhint">
-      點卡片會開大圖確認；點左上角的方框才是勾選。刪除無法復原。
+      {{ t('點卡片會開大圖確認；點左上角的方框才是勾選。刪除無法復原。') }}
     </div>
 
     <!-- The threshold.
@@ -872,12 +877,12 @@ onMounted(async () => {
          class="confrow">
       <span class="spacer"></span>
       <button v-if="conf !== confRange.def" class="lnk"
-              @click="conf = confRange.def">回到預設 {{ confRange.def }}</button>
-      <label class="ib">辨識門檻
-        <span class="cend">標記較少</span>
+              @click="conf = confRange.def">{{ t('回到預設 {n}', { n: confRange.def }) }}</button>
+      <label class="ib">{{ t('辨識門檻') }}
+        <span class="cend">{{ t('標記較少') }}</span>
         <input type="range" :min="confRange.min" :max="confRange.max" step="0.05"
                v-model.number="conf" :disabled="scanningPerson" />
-        <span class="cend">標記較多</span>
+        <span class="cend">{{ t('標記較多') }}</span>
         <b>{{ conf.toFixed(2) }}</b>
       </label>
       <!-- No explanatory paragraph, and no "these numbers were computed at X"
@@ -897,14 +902,14 @@ onMounted(async () => {
       {{ personReason }}
     </div>
     <div v-if="personError" class="msg err">{{ personError }}</div>
-    <div v-if="loading" class="msg">載入中…</div>
+    <div v-if="loading" class="msg">{{ t('載入中…') }}</div>
     <!-- A second way out, right where you are looking. The empty grid is the
          normal end of this job — you deleted them all — so it should read as
          success with a door, not as a dead end. -->
     <div v-else-if="noPersonMode && !shownMedia.length" class="msg empty-np">
-      <span>{{ person.total ? '沒有剩下任何「沒有人物」的照片了。'
-                            : '這個角色沒有被判定為「沒有人物」的照片。' }}</span>
-      <button class="btn" @click="noPersonMode = false">顯示全部照片</button>
+      <span>{{ person.total ? t('沒有剩下任何「沒有人物」的照片了。')
+                            : t('這個角色沒有被判定為「沒有人物」的照片。') }}</span>
+      <button class="btn" @click="noPersonMode = false">{{ t('顯示全部照片') }}</button>
     </div>
     <!-- the album cards -->
     <div v-else-if="inAlbums && !curAlbum" class="agrid">
@@ -915,7 +920,7 @@ onMounted(async () => {
           <span v-if="a.videos" class="badge vcount ib">
             <Icon name="play" :size="11" /> {{ a.videos }}</span>
         </div>
-        <div class="atitle" :title="a.name">{{ a.name }}</div>
+        <div class="atitle" :title="albumName(a)">{{ albumName(a) }}</div>
         <div class="asub">{{ albumCaption(a) }}</div>
       </div>
     </div>
@@ -927,12 +932,12 @@ onMounted(async () => {
         <span v-if="m.is_video" class="badge"><Icon name="play" :size="12" /></span>
         <!-- a real target, not a 13px icon: this gets tapped 200 times in a row -->
         <button v-if="batchMode" class="pick" @click.stop="togglePick(m)"
-                :title="picked.has(m.path) ? '取消勾選' : '勾選要刪除'">
+                :title="picked.has(m.path) ? t('取消勾選') : t('勾選要刪除')">
           <Icon :name="picked.has(m.path) ? 'checked' : 'unchecked'" :size="18" />
         </button>
         <button v-if="canInfo && !m.is_video && !store.deleteMode" class="setav"
-                @click.stop="setAvatar(m)" title="設為大頭照"><Icon name="star" :size="13" /></button>
-        <button v-if="store.deleteMode" class="delbadge" title="永久刪除"
+                @click.stop="setAvatar(m)" :title="t('設為大頭照')"><Icon name="star" :size="13" /></button>
+        <button v-if="store.deleteMode" class="delbadge" :title="t('永久刪除')"
                 @click.stop="doDelete(m)"><Icon name="trash" :size="14" /></button>
         <!-- pinned to the card, not thrown into an alert: the reason matters
              and the retry should be aimed at these specific files -->

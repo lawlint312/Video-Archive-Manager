@@ -8,6 +8,8 @@ import { isOpen, toggleGroup, openGroup, setAllGroups, groupData, applyGroups,
 import { viewForChar, pickTab } from '../groupview'
 import { loadVideoIndex, searchVideos, fullPath, videoIndex } from '../videosearch'
 import Icon from './Icon.vue'
+import { t } from '../i18n'
+import { ts } from '../serverstrings.js'
 
 const chars = ref([])
 // shared with the home grid — see charstats.js
@@ -82,27 +84,27 @@ async function assignGroup(target) {
       body: JSON.stringify({ groups: next, order: order.value }),
     })
     applyGroups(d)
-    emit('toast', target ? `已移至「${target}」` : '已移至未分類')
-  } catch (e) { alert('設定分類失敗：' + errText(e)) }
+    emit('toast', target ? t('已移至「{name}」', { name: target }) : t('已移至未分類'))
+  } catch (e) { alert(t('設定分類失敗：') + errText(e)) }
 }
 
 async function reindexChar() {
   const c = ctx.value.char; closeCtx()
-  if (!store.faceAvailable) { alert(store.faceReason || '人臉辨識不可用'); return }
-  if (!confirm(`重新索引「${c.name}」的人臉？\n\n（只會處理尚未索引的影片）`)) return
+  if (!store.faceAvailable) { alert(store.faceReason || t('人臉辨識不可用')); return }
+  if (!confirm(t('重新索引「{name}」的人臉？\n\n（只會處理尚未索引的影片）', { name: c.name }))) return
   try {
     const { job_id } = await api('/api/face/index', {
       method: 'POST', body: JSON.stringify({ person: c.name }),
     })
-    emit('toast', `開始索引「${c.name}」…`)
+    emit('toast', t('開始索引「{name}」…', { name: c.name }))
     while (true) {
       await new Promise(r => setTimeout(r, 900))
       const j = await api(`/api/face/job/${job_id}`)
-      if (j.progress?.file) emit('toast', `索引中 ${c.name} / ${j.progress.file}`)
-      if (j.status === 'done') { emit('toast', `索引完成，新增 ${j.result.indexed} 部`); break }
-      if (j.status === 'error') { emit('toast', '索引失敗：' + j.error); break }
+      if (j.progress?.file) emit('toast', t('索引中 {name} / {file}', { name: c.name, file: j.progress.file }))
+      if (j.status === 'done') { emit('toast', t('索引完成，新增 {n} 部', { n: j.result.indexed })); break }
+      if (j.status === 'error') { emit('toast', t('索引失敗：') + ts(j.error)); break }
     }
-  } catch (e) { alert('索引失敗：' + errText(e)) }
+  } catch (e) { alert(t('索引失敗：') + errText(e)) }
 }
 
 async function copyPath() {
@@ -110,14 +112,14 @@ async function copyPath() {
   const text = c.merged ? c.paths.join('\n') : c.path
   try {
     await navigator.clipboard.writeText(text)
-    emit('toast', '已複製資料夾路徑')
-  } catch { prompt('資料夾路徑：', text) }
+    emit('toast', t('已複製資料夾路徑'))
+  } catch { prompt(t('資料夾路徑：'), text) }
 }
 
 async function renameChar() {
   const c = ctx.value.char; closeCtx()
-  if (c.merged) { alert('合併項目請先整合，再重新命名'); return }
-  const name = prompt('新名稱：', c.name)
+  if (c.merged) { alert(t('合併項目請先整合，再重新命名')); return }
+  const name = prompt(t('新名稱：'), c.name)
   if (!name || !name.trim() || name === c.name) return
   try {
     await api('/api/character/rename', {
@@ -126,7 +128,7 @@ async function renameChar() {
     })
     if (store.selectedChar?.path === c.path) store.selectedChar = null
     load()
-  } catch (e) { alert('重新命名失敗：' + errText(e)) }
+  } catch (e) { alert(t('重新命名失敗：') + errText(e)) }
 }
 
 function mergeChar() {
@@ -209,6 +211,9 @@ async function load() {
   try {
     const [c] = await Promise.all([api('/api/characters'), loadGroups()])
     chars.value = c.characters
+    // a reload or remount while a character is open: the watch above ran
+    // before there was a list to find it in
+    reveal()
   } catch { /* ignore */ }
   // counts walk every folder → load after the sidebar is already usable.
   // A remount (settings saved, archive finished…) means the numbers changed.
@@ -272,11 +277,42 @@ function toggleAll() {
 
 // With everything closed by default, opening a character from the home grid
 // would leave the sidebar showing no sign of where you are. Reveal it.
-watch(() => store.selectedChar?.name, name => {
+//
+// Opening the group was not enough: 未分類 holds hundreds, so the highlighted
+// row usually sat below the fold and the sidebar looked as if it had not
+// followed. Scroll it to the middle — unless it is already in view, so a
+// click in the sidebar itself never makes the list jump. A row the search
+// box has filtered out is left alone: the query is the user's, not ours to
+// clear. On a phone the drawer is only translated off-screen, so this lands
+// while it is shut and it opens already in place.
+const listEl = ref(null)
+
+// The list already filters as you type; the button is for when that is not
+// obvious, and on a phone it puts the keyboard away so the results show.
+const searchEl = ref(null)
+function runSearch() {
+  if (filter.value.trim()) searchEl.value?.blur()
+  else searchEl.value?.focus()
+}
+function clearSearch() {
+  filter.value = ''
+  searchEl.value?.focus()
+}
+
+async function reveal() {
+  const name = store.selectedChar?.name
   if (!name) return
   const sec = sections.value.find(s => s.members.some(m => m.name === name))
   if (sec) openGroup(sec.name)
-}, { immediate: true })
+  await nextTick()
+  const list = listEl.value
+  const row = list?.querySelector('.item.child.active')
+  if (!row) return
+  const lr = list.getBoundingClientRect(), rr = row.getBoundingClientRect()
+  if (rr.top >= lr.top && rr.bottom <= lr.bottom) return
+  list.scrollTop += rr.top - lr.top - (lr.height - rr.height) / 2
+}
+watch(() => store.selectedChar?.path, reveal, { immediate: true })
 function toggleMerge(name, e) { e.stopPropagation(); expandedMerge.value[name] = !expandedMerge.value[name] }
 function cnt(name) { return countsReady.value ? (counts.value[name] ?? 0) : null }
 function driveOf(p) { return (p.match(/^[A-Za-z]:/) || [p.slice(0, 12)])[0] }
@@ -287,31 +323,43 @@ onMounted(load)
 
 <template>
   <aside class="sidebar">
-    <div class="hdr">
-      <span>角色</span>
-      <span class="spacer"></span>
-      <button class="alltog" :title="allOpen ? '全部收合' : '全部展開'"
-              @click="toggleAll">
-        <Icon :name="allOpen ? 'chevronDown' : 'chevronRight'" :size="12" />
-        {{ allOpen ? '全部收合' : '全部展開' }}
-      </button>
+    <div class="sbox">
+      <input ref="searchEl" v-model="filter" class="search"
+             :placeholder="t('搜尋角色、標籤或影片…')"
+             @keydown.enter="runSearch" @keydown.esc="clearSearch" />
+      <button v-if="filter" class="sbtn sclear" :title="t('清除')" :aria-label="t('清除')"
+              @click="clearSearch"><Icon name="close" :size="14" /></button>
+      <button class="sbtn sgo" :title="t('搜尋')" :aria-label="t('搜尋')"
+              @click="runSearch"><Icon name="search" :size="14" /></button>
     </div>
-    <input v-model="filter" class="search" placeholder="搜尋角色、標籤或影片…" />
 
-    <div class="list">
-      <div class="item ib" :class="{ active: store.view === 'home' }" @click="goHome">
-        <Icon name="home" /> 主頁
-      </div>
-      <div v-if="store.hasInbox" class="item ib"
-           :class="{ active: store.view === 'inbox' }" @click="goInbox">
-        <Icon name="inbox" /> 待分類
+    <!-- outside .list, so scrolling the characters leaves these in place -->
+    <div class="nav">
+      <div class="navrow">
+        <div class="item ib" :class="{ active: store.view === 'home' }" @click="goHome">
+          <Icon name="home" /> {{ t('主頁') }}
+        </div>
+        <div v-if="store.hasInbox" class="item ib"
+             :class="{ active: store.view === 'inbox' }" @click="goInbox">
+          <Icon name="inbox" /> {{ t('待分類') }}
+        </div>
+        <span class="spacer"></span>
+        <button class="alltog" :title="allOpen ? t('全部收合') : t('全部展開')"
+                @click="toggleAll">
+          <Icon :name="allOpen ? 'chevronDown' : 'chevronRight'" :size="12" />
+          {{ allOpen ? t('全部收合') : t('全部展開') }}
+        </button>
       </div>
       <div class="sep"></div>
+    </div>
 
+    <div ref="listEl" class="list">
       <template v-for="s in sections" :key="s.name">
         <div class="ghdr" @click="toggle(s.name)">
           <Icon :name="shown(s.name) ? 'chevronDown' : 'chevronRight'" :size="13" />
-          {{ s.name }} <span class="gcnt">({{ s.members.length }})</span>
+          <!-- 未分類 stays the key (open/closed state is stored by it); only
+               its label is translated. A group the user named is theirs. -->
+          {{ s.name === '未分類' ? t('未分類') : s.name }} <span class="gcnt">({{ s.members.length }})</span>
         </div>
         <template v-if="shown(s.name)">
           <template v-for="c in s.members" :key="c.path">
@@ -353,7 +401,7 @@ onMounted(load)
               </div>
               <div v-if="videoHit(c.name).count > videoHit(c.name).shown.length"
                    class="item vmore" @click.stop="select(c)">
-                還有 {{ videoHit(c.name).count - videoHit(c.name).shown.length }} 個相符
+                {{ t('還有 {n} 個相符', { n: videoHit(c.name).count - videoHit(c.name).shown.length }) }}
               </div>
             </template>
           </template>
@@ -362,7 +410,7 @@ onMounted(load)
 
       <!-- inbox hits have no character to sit under -->
       <template v-if="searching && vhits.inbox.length">
-        <div class="ghdr plain"><Icon name="inbox" :size="13" /> 待分類</div>
+        <div class="ghdr plain"><Icon name="inbox" :size="13" /> {{ t('待分類') }}</div>
         <div v-for="row in vhits.inbox" :key="row[0]" class="item vhit"
              :title="fullPath(row)" @click="e => openHit(row, e)">
           <Icon name="film" :size="11" /> {{ row[0] }}
@@ -370,7 +418,7 @@ onMounted(load)
       </template>
 
       <div v-if="searching && !sections.length && !vhits.inbox.length"
-           class="nores">找不到符合的角色或影片</div>
+           class="nores">{{ t('找不到符合的角色或影片') }}</div>
     </div>
 
     <!-- right-click menu (edit mode only) -->
@@ -378,37 +426,37 @@ onMounted(load)
       <div ref="menuEl" class="ctxmenu"
            :style="{ left: menuPos.x + 'px', top: menuPos.y + 'px' }" @click.stop>
         <div class="ctxname">{{ ctx.char.name }}</div>
-        <div class="ctxitem ib" @click="copyPath"><Icon name="copy" :size="14" /> 複製資料夾路徑</div>
+        <div class="ctxitem ib" @click="copyPath"><Icon name="copy" :size="14" /> {{ t('複製資料夾路徑') }}</div>
         <div v-if="can('person')" class="ctxitem ib" :class="{ dis: !store.faceAvailable }"
              @click="reindexChar">
-          <Icon name="refresh" :size="14" /> 重新索引此人
+          <Icon name="refresh" :size="14" /> {{ t('重新索引此人') }}
         </div>
-        <div v-if="can('rename_merge')" class="ctxitem ib" @click="renameChar"><Icon name="pencil" :size="14" /> 重新命名</div>
-        <div v-if="ctx.char.merged && can('rename_merge')" class="ctxitem ib" @click="mergeChar"><Icon name="merge" :size="14" /> 整合資料夾…</div>
+        <div v-if="can('rename_merge')" class="ctxitem ib" @click="renameChar"><Icon name="pencil" :size="14" /> {{ t('重新命名') }}</div>
+        <div v-if="ctx.char.merged && can('rename_merge')" class="ctxitem ib" @click="mergeChar"><Icon name="merge" :size="14" /> {{ t('整合資料夾…') }}</div>
 
         <div v-if="can('groups')" class="ctxsep"></div>
         <div v-if="can('groups')" class="ctxitem sub" @click="showGroupSub = !showGroupSub">
-          <span class="ib"><Icon name="tags" :size="14" /> 設定分類</span>
+          <span class="ib"><Icon name="tags" :size="14" /> {{ t('設定分類') }}</span>
           <Icon :name="showGroupSub ? 'chevronDown' : 'chevronRight'" :size="12" class="chev" />
         </div>
         <template v-if="showGroupSub">
           <div class="ctxitem indent" @click="assignGroup('')">
-            <span class="tick"><Icon v-if="groupOf(ctx.char.name) === ''" name="check" :size="12" /></span> 未分類
+            <span class="tick"><Icon v-if="groupOf(ctx.char.name) === ''" name="check" :size="12" /></span> {{ t('未分類') }}
           </div>
           <div v-for="g in order" :key="g" class="ctxitem indent" @click="assignGroup(g)">
             <span class="tick"><Icon v-if="groupOf(ctx.char.name) === g" name="check" :size="12" /></span> {{ g }}
           </div>
           <div class="ctxitem indent" @click="closeCtx(); emit('manage-groups')">
-            <span class="ib"><Icon name="settings" :size="13" /> 管理分類…</span>
+            <span class="ib"><Icon name="settings" :size="13" /> {{ t('管理分類…') }}</span>
           </div>
         </template>
       </div>
     </div>
 
     <div class="foot">
-      <span>{{ chars.length }} 個角色</span>
+      <span>{{ t('{n} 個角色', { n: chars.length }) }}</span>
       <button v-if="store.editMode && can('groups')"
-              class="mg no-mobile" @click="emit('manage-groups')">管理分類</button>
+              class="mg no-mobile" @click="emit('manage-groups')">{{ t('管理分類') }}</button>
     </div>
   </aside>
 </template>
@@ -426,14 +474,23 @@ onMounted(load)
   border-right: 1px solid #313148; display: flex; flex-direction: column;
   height: calc(100vh - 53px - 26px);
   height: calc(100dvh - 53px - 26px); }
-.hdr .spacer { flex: 1; }
 .alltog { background: none; border: none; color: var(--dim); font-size: 11px;
   cursor: pointer; display: inline-flex; align-items: center; gap: 2px;
-  padding: 0; }
+  padding: 0 6px; flex-shrink: 0; white-space: nowrap; }
 .alltog:hover { color: var(--accent); }
-.hdr { font-weight: bold; font-size: 13px; padding: 12px 12px 6px;
-  display: flex; align-items: center; gap: 6px; }
-.search { margin: 0 10px 8px; }
+.sbox { position: relative; margin: 12px 10px 8px; }
+.search { width: 100%; padding-right: 54px; }
+.sbtn { position: absolute; top: 50%; transform: translateY(-50%);
+  width: 24px; height: 24px; padding: 0; border: none; border-radius: 4px;
+  background: none; color: var(--dim); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; }
+.sbtn:hover { color: var(--accent); background: var(--hover); }
+.sgo { right: 4px; }
+.sclear { right: 28px; }
+.nav { padding: 0 6px; flex-shrink: 0; }
+.navrow { display: flex; align-items: center; gap: 2px; }
+.navrow .item { flex-shrink: 0; }
+.navrow .spacer { flex: 1; }
 .alias { color: var(--accent); font-size: 10px; margin-left: 4px; }
 /* Same job as .alias — "this is why the row is here" — but a different colour,
    so a hit on a tag is not read as an alias the character does not have. */
@@ -487,4 +544,13 @@ onMounted(load)
 .tick { display: inline-block; width: 12px; color: var(--success); }
 .ctxitem:hover .tick { color: #fff; }
 .ctxsep { height: 1px; background: #313148; margin: 4px 0; }
+
+/* 24px icons are a mouse affordance; a thumb needs more */
+@media (max-width: 760px), (pointer: coarse) and (max-height: 500px) {
+  .search { padding-right: 76px; }
+  .sbtn { width: 34px; height: 34px; }
+  .sgo { right: 2px; }
+  .sclear { right: 38px; }
+  .alltog { min-height: 36px; padding: 0 10px; }
+}
 </style>

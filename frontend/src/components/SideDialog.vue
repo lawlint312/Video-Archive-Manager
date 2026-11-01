@@ -14,6 +14,7 @@
  */
 import { computed } from 'vue'
 import Icon from './Icon.vue'
+import { t } from '../i18n'
 
 const props = defineProps({
   title: { type: String, required: true },   // the dialog's name, top left
@@ -58,7 +59,7 @@ const active = computed(() =>
             <h2>{{ active?.heading || active?.label }}</h2>
             <div v-if="subtitle" class="psub">{{ subtitle }}</div>
           </div>
-          <button class="xbtn" title="關閉" :disabled="locked" @click="emit('close')">
+          <button class="xbtn" :title="t('關閉')" :disabled="locked" @click="emit('close')">
             <Icon name="close" :size="16" /></button>
         </div>
         <!-- a bounded flex column: each page puts its own scroller in here -->

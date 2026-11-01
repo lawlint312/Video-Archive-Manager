@@ -14,7 +14,7 @@ import {
   Wrench, ChevronRight, ChevronDown, ChevronLeft, Plus, ArrowUp, ArrowDown,
   StickyNote, Keyboard, LoaderCircle, ExternalLink, SquareCheck, Square,
   CircleDot, Camera, LayoutGrid, Rows3, LogOut, Gauge, Scissors,
-  FlagTriangleRight, FlagTriangleLeft, Heart, Info, History,
+  FlagTriangleRight, FlagTriangleLeft, Heart, Info, History, Globe,
 } from 'lucide-vue-next'
 
 const MAP = {
@@ -30,7 +30,7 @@ const MAP = {
   unchecked: Square, dot: CircleDot, camera: Camera, grid: LayoutGrid,
   rows: Rows3, logout: LogOut, gauge: Gauge, scissors: Scissors,
   markIn: FlagTriangleRight, markOut: FlagTriangleLeft, heart: Heart,
-  info: Info, history: History,
+  info: Info, history: History, globe: Globe,
 }
 
 const props = defineProps({

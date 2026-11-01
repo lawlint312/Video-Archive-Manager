@@ -2,6 +2,7 @@
 import { ref, computed, onBeforeUnmount } from 'vue'
 import { avatarImgStyle, coverSizePx, clampFocal } from '../avatar'
 import Icon from './Icon.vue'
+import { t } from '../i18n'
 
 const props = defineProps({
   src: { type: String, required: true },
@@ -85,7 +86,7 @@ onBeforeUnmount(onUp)
   <div class="modal" @click.self="emit('close')">
     <div class="dlg">
       <div class="dhead">
-        <span>調整大頭照</span>
+        <span>{{ t('調整大頭照') }}</span>
         <button class="btn ghost" @click="emit('close')"><Icon name="close" :size="14" /></button>
       </div>
 
@@ -96,14 +97,14 @@ onBeforeUnmount(onUp)
         </div>
 
         <div class="hint">
-          拖曳移動位置 · 滾輪或滑桿縮放
-          <span v-if="!slack.x && !slack.y" class="note">（放大後才能移動）</span>
-          <span v-else-if="!slack.x" class="note">（此圖目前只能上下移動，放大可左右移動）</span>
-          <span v-else-if="!slack.y" class="note">（此圖目前只能左右移動，放大可上下移動）</span>
+          {{ t('拖曳移動位置 · 滾輪或滑桿縮放') }}
+          <span v-if="!slack.x && !slack.y" class="note">{{ t('（放大後才能移動）') }}</span>
+          <span v-else-if="!slack.x" class="note">{{ t('（此圖目前只能上下移動，放大可左右移動）') }}</span>
+          <span v-else-if="!slack.y" class="note">{{ t('（此圖目前只能左右移動，放大可上下移動）') }}</span>
         </div>
 
         <div class="zoomrow">
-          <span>縮放</span>
+          <span>{{ t('縮放') }}</span>
           <input type="range" min="1" max="5" step="0.02"
                  v-model.number="zoom" @input="onZoomInput" />
           <span class="zval">{{ zoom.toFixed(2) }}×</span>
@@ -111,10 +112,10 @@ onBeforeUnmount(onUp)
       </div>
 
       <div class="foot">
-        <button class="btn ghost" @click="reset">重設</button>
+        <button class="btn ghost" @click="reset">{{ t('重設') }}</button>
         <span class="spacer"></span>
-        <button class="btn" @click="save">確定</button>
-        <button class="btn ghost" @click="emit('close')">取消</button>
+        <button class="btn" @click="save">{{ t('確定') }}</button>
+        <button class="btn ghost" @click="emit('close')">{{ t('取消') }}</button>
       </div>
     </div>
   </div>

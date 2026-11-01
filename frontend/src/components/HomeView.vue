@@ -9,6 +9,7 @@ import { viewForChar, pickTab, viewOf, HOME_SHAPES, homeStyle, cardImage }
 import { avatarImgStyle } from '../avatar'
 import { sizeBatcher } from '../imgsizes.js'
 import Icon from './Icon.vue'
+import { t } from '../i18n'
 
 const chars = ref([])
 // shared with the sidebar and App.vue — see groups.js
@@ -81,10 +82,10 @@ function fmtSize(b) {
 function fmtAge(ts) {
   if (!ts) return ''
   const days = (Date.now() / 1000 - ts) / 86400
-  if (days < 1) return '今天'
-  if (days < 30) return `${Math.floor(days)} 天前`
-  if (days < 365) return `${Math.floor(days / 30)} 個月前`
-  return `${Math.floor(days / 365)} 年前`
+  if (days < 1) return t('今天')
+  if (days < 30) return t('{n} 天前', { n: Math.floor(days) })
+  if (days < 365) return t('{n} 個月前', { n: Math.floor(days / 30) })
+  return t('{n} 年前', { n: Math.floor(days / 365) })
 }
 
 function sortChars(list) {
@@ -160,40 +161,40 @@ watch(() => store.charsVersion, load)
 <template>
   <div class="home">
     <div class="htitle">
-      <span class="ib"><Icon name="home" :size="17" /> 主頁 · {{ chars.length }} 位角色</span>
+      <span class="ib"><Icon name="home" :size="17" /> {{ t('主頁 · {n} 位角色', { n: chars.length }) }}</span>
       <!-- A filter you cannot see is a bug report waiting to happen: without
            this the grid just looks like most of the library vanished. -->
       <button v-if="store.tagFilter" class="tagfilter ib" @click="clearTag">
         <Icon name="tags" :size="12" /> {{ store.tagFilter }}
-        <span class="fcount">{{ tagged.length }} 位</span>
+        <span class="fcount">{{ t('{n} 位', { n: tagged.length }) }}</span>
         <Icon name="close" :size="12" />
       </button>
       <span class="spacer"></span>
       <!-- Label and buttons wrap as one unit; see the phone rules below. -->
       <span class="tgroup">
       <button class="tbtn" @click="toggleAll">
-        {{ allOpen ? '全部收合' : '全部展開' }}
+        {{ allOpen ? t('全部收合') : t('全部展開') }}
       </button>
-      <span class="slab">排序</span>
+      <span class="slab">{{ t('排序') }}</span>
       <button class="tbtn" :class="{ on: sortBy === 'newest', wait: sortBy === 'newest' && pending }"
-              @click="setSort('newest')">最近新增</button>
+              @click="setSort('newest')">{{ t('最近新增') }}</button>
       <button class="tbtn" :class="{ on: sortBy === 'count', wait: sortBy === 'count' && pending }"
-              @click="setSort('count')">數量</button>
+              @click="setSort('count')">{{ t('數量') }}</button>
       <button class="tbtn" :class="{ on: sortBy === 'bytes', wait: sortBy === 'bytes' && pending }"
-              @click="setSort('bytes')">容量</button>
-      <button class="tbtn" :class="{ on: sortBy === 'name' }" @click="setSort('name')">名稱</button>
-      <span v-if="pending" class="waitlab ib"><Icon name="spinner" :size="11" class="spin" /> 計算中</span>
+              @click="setSort('bytes')">{{ t('容量') }}</button>
+      <button class="tbtn" :class="{ on: sortBy === 'name' }" @click="setSort('name')">{{ t('名稱') }}</button>
+      <span v-if="pending" class="waitlab ib"><Icon name="spinner" :size="11" class="spin" /> {{ t('計算中') }}</span>
       </span>
     </div>
 
-    <div v-if="loading" class="msg">載入中…</div>
+    <div v-if="loading" class="msg">{{ t('載入中…') }}</div>
     <div v-else-if="store.tagFilter && !tagged.length" class="msg">
-      沒有角色標了「{{ store.tagFilter }}」
+      {{ t('沒有角色標了「{tag}」', { tag: store.tagFilter }) }}
     </div>
     <template v-else v-for="s in sections" :key="s.name">
       <div class="ghdr" @click="toggleGroup(s.name)">
         <Icon :name="filtering || isOpen(s.name) ? 'chevronDown' : 'chevronRight'" :size="14" />
-        {{ s.name }} <span class="gcnt">({{ s.members.length }})</span>
+        {{ s.name === '未分類' ? t('未分類') : s.name }} <span class="gcnt">({{ s.members.length }})</span>
       </div>
       <div v-if="filtering || isOpen(s.name)" class="grid"
            :style="homeStyle(shapeOf(s.name))">
@@ -215,7 +216,7 @@ watch(() => store.charsVersion, load)
           <div v-if="sortBy !== 'name' && stat(c.name)" class="sub">
             <template v-if="sortBy === 'bytes'">{{ fmtSize(stat(c.name).bytes) }}</template>
             <template v-else-if="sortBy === 'newest'">{{ fmtAge(stat(c.name).newest) }}</template>
-            <template v-else>{{ stat(c.name).count }} 部</template>
+            <template v-else>{{ t('{n} 部', { n: stat(c.name).count }) }}</template>
           </div>
         </div>
       </div>

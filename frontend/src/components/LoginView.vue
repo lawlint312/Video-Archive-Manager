@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { api, errText } from '../api'
 import { store } from '../store'
 import Icon from './Icon.vue'
+import { t } from '../i18n'
 
 // Empty, not 'admin'. The prefill dated from the first commit, when this only
 // ever ran on localhost. Once the login page was reachable from the internet
@@ -35,7 +36,7 @@ async function submit() {
     store.user = r
     store.loginNotice = ''
   } catch (e) {
-    error.value = e.status === 401 ? '帳號或密碼錯誤' : ('登入失敗：' + errText(e))
+    error.value = e.status === 401 ? t('帳號或密碼錯誤') : (t('登入失敗：') + errText(e))
   } finally {
     busy.value = false
   }
@@ -52,7 +53,7 @@ async function submitCode() {
     // Says it out loud: a recovery code is one of ten and does not come back.
     if (r.recovery_used) recoveryLeft.value = r.recovery_left
     store.loginNotice = r.recovery_used
-      ? `已使用一組備用碼，還剩 ${r.recovery_left} 組。建議到「兩步驟驗證」重新產生。`
+      ? t('已使用一組備用碼，還剩 {n} 組。建議到「兩步驟驗證」重新產生。', { n: r.recovery_left })
       : ''
     store.user = r
   } catch (e) {
@@ -75,31 +76,31 @@ function backToPassword() { ticket.value = ''; code.value = ''; error.value = ''
     <div class="login-card">
       <h1><img class="logo" src="/brand-lockup.png"
                alt="Video Archive Manager" /></h1>
-      <p class="sub">請登入</p>
+      <p class="sub">{{ t('請登入') }}</p>
       <!-- A real <form> with name/autocomplete so password managers recognise
            the pair and offer to save and fill it. -->
       <form v-if="!ticket" class="login-form" @submit.prevent="submit">
         <input v-model="username" name="username" autocomplete="username"
-               placeholder="帳號" autocapitalize="off" spellcheck="false" />
+               :placeholder="t('帳號')" autocapitalize="off" spellcheck="false" />
         <input v-model="password" name="password" type="password"
-               autocomplete="current-password" placeholder="密碼" />
+               autocomplete="current-password" :placeholder="t('密碼')" />
         <button class="btn" type="submit" :disabled="busy">
-          {{ busy ? '登入中…' : '登入' }}
+          {{ busy ? t('登入中…') : t('登入') }}
         </button>
       </form>
 
       <!-- second step -->
       <form v-else class="login-form" @submit.prevent="submitCode">
         <div class="step2">
-          輸入驗證 App 上的 6 位數字。手機不在身邊時，也可以輸入一組備用碼。
+          {{ t('輸入驗證 App 上的 6 位數字。手機不在身邊時，也可以輸入一組備用碼。') }}
         </div>
         <input v-model="code" name="one-time-code" autocomplete="one-time-code"
-               inputmode="text" placeholder="000000 或備用碼"
+               inputmode="text" :placeholder="t('000000 或備用碼')"
                autocapitalize="characters" spellcheck="false" autofocus />
         <button class="btn" type="submit" :disabled="busy || !code">
-          {{ busy ? '驗證中…' : '驗證' }}
+          {{ busy ? t('驗證中…') : t('驗證') }}
         </button>
-        <button type="button" class="linkbtn" @click="backToPassword">重新輸入密碼</button>
+        <button type="button" class="linkbtn" @click="backToPassword">{{ t('重新輸入密碼') }}</button>
       </form>
       <div v-if="error" class="err">{{ error }}</div>
       <div v-else-if="store.loginNotice" class="notice">{{ store.loginNotice }}</div>

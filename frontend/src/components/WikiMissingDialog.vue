@@ -15,6 +15,7 @@ import { ref, computed, onMounted } from 'vue'
 import { api, errText } from '../api'
 import { sectionName } from '../wikisections'
 import Icon from './Icon.vue'
+import { t } from '../i18n'
 
 const props = defineProps({
   root: { type: String, required: true },
@@ -56,7 +57,7 @@ async function load() {
     works.value = d.works
     stale.value = d.stale
   } catch (e) {
-    error.value = '讀取失敗：' + errText(e)
+    error.value = t('讀取失敗：') + errText(e)
   } finally { loading.value = false }
 }
 
@@ -68,7 +69,7 @@ async function copy(text, mark) {
   } catch {
     // clipboard is blocked over plain HTTP on some browsers; a prompt is ugly
     // but it still lets the number be copied by hand
-    prompt('複製：', text)
+    prompt(t('複製：'), text)
   }
 }
 
@@ -83,37 +84,36 @@ onMounted(load)
     <div class="dlg">
       <div class="dhead">
         <span class="ib"><Icon name="film" :size="16" />
-          尚未收入 · {{ name }}<template v-if="section"> · {{ sectionName(section) }}</template>
+          {{ t('尚未收入') }} · {{ name }}<template v-if="section"> · {{ sectionName(section) }}</template>
         </span>
         <span class="spacer"></span>
         <button class="btn ghost" @click="emit('close')">
           <Icon name="close" :size="14" /></button>
       </div>
 
-      <div v-if="loading" class="msg">載入中…</div>
+      <div v-if="loading" class="msg">{{ t('載入中…') }}</div>
       <div v-else-if="error" class="msg err">{{ error }}</div>
       <div v-else-if="!works.length" class="msg">
-        匯入的頁面上的作品你都有了。
+        {{ t('匯入的頁面上的作品你都有了。') }}
       </div>
 
       <template v-else>
         <!-- Imported before the release list was stored: the numbers are
              there, the titles are not. Says what to do about it. -->
         <div v-if="stale" class="note">
-          這位角色的 wiki 資料是舊版匯入的，只存了番號沒有存片名。
-          到「角色查詢 → WIKI 匯入」重新丟一次那個頁面就會有了。
+          {{ t('這位角色的 wiki 資料是舊版匯入的，只存了番號沒有存片名。到「角色查詢 → WIKI 匯入」重新丟一次那個頁面就會有了。') }}
         </div>
         <div class="bar">
-          <input v-model="q" class="find" placeholder="搜尋番號或片名…" />
-          <span class="cnt">{{ shown.length }} 部</span>
+          <input v-model="q" class="find" :placeholder="t('搜尋番號或片名…')" />
+          <span class="cnt">{{ t('{n} 部', { n: shown.length }) }}</span>
           <label v-if="coveredCount" class="cov"
-                 title="AVBase 的收錄關係：這些片的內容在你已有的另一部裡（原片，或完整收錄的總集編）">
+                 :title="t('AVBase 的收錄關係：這些片的內容在你已有的另一部裡（原片，或完整收錄的總集編）')">
             <input type="checkbox" v-model="hideCovered" />
-            隱藏已有原片的 {{ coveredCount }} 部</label>
+            {{ t('隱藏已有原片的 {n} 部', { n: coveredCount }) }}</label>
           <span class="spacer"></span>
           <button class="btn ghost sm ib" @click="copy(allIds, '__all__')">
             <Icon :name="copied === '__all__' ? 'check' : 'copy'" :size="13" />
-            {{ copied === '__all__' ? '已複製' : '複製全部番號' }}
+            {{ copied === '__all__' ? t('已複製') : t('複製全部番號') }}
           </button>
         </div>
 
@@ -122,19 +122,19 @@ onMounted(load)
                thing this list exists to hand over. -->
           <div v-for="w in visible" :key="w.video_id + w.date" class="row"
                :class="{ hit: copied === w.video_id }"
-               :title="w.video_id ? '點一下複製番號' : '這一部 wiki 沒有記番號'"
+               :title="w.video_id ? t('點一下複製番號') : t('這一部 wiki 沒有記番號')"
                @click="w.video_id && copy(w.video_id, w.video_id)">
             <span class="date">{{ w.date }}</span>
             <span class="vid" :class="{ none: !w.video_id }">
               {{ w.video_id || '—' }}</span>
             <span class="title">{{ w.title }}</span>
-            <span v-if="w.covered_by" class="covby">已有原片 {{ w.covered_by }}</span>
+            <span v-if="w.covered_by" class="covby">{{ t('已有原片 {id}', { id: w.covered_by }) }}</span>
             <span v-if="!section" class="sec">{{ sectionName(w.section) }}</span>
             <Icon v-if="copied === w.video_id" name="check" :size="12" class="ok" />
           </div>
           <div v-if="limit < shown.length" class="more"
                @click="limit += BATCH">
-            顯示 {{ visible.length }} / {{ shown.length }} · 點此載入更多
+            {{ t('顯示 {shown} / {total} · 點此載入更多', { shown: visible.length, total: shown.length }) }}
           </div>
         </div>
       </template>

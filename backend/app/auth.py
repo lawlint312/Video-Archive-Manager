@@ -22,7 +22,9 @@ TWOFA_ENFORCED = True
 
 # What an account with must_change_pw may still reach: read itself, change the
 # password, sign out. Nothing else.
-_PW_ALLOWED = {"/api/auth/me", "/api/auth/password", "/api/auth/logout"}
+_PW_ALLOWED = {"/api/auth/me", "/api/auth/password", "/api/auth/logout",
+               # reading the "change your password" screen in your own language
+               "/api/auth/lang"}
 # Same idea for "you have to set two-factor up first", plus the setup calls.
 _2FA_ALLOWED = _PW_ALLOWED | {"/api/auth/2fa", "/api/auth/2fa/setup",
                               "/api/auth/2fa/enable"}
@@ -212,6 +214,24 @@ def set_totp(uid: int, secret=_UNSET, pending=_UNSET, last=_UNSET,
 # flag at once; sign-in keeps it while this is the stored reason, and only
 # changing the password clears it.
 GENERATED_PW = "這是第一次啟動時自動產生的密碼，已經寫在伺服器的日誌檔裡，請換一個新密碼"
+
+
+# Interface languages. The strings themselves live in the frontend
+# (src/locales/); this is only which one an account picked.
+LANGS = ("zh-TW", "zh-CN", "en")
+
+
+def set_lang(uid: int, lang: str):
+    """The account's interface language. Not `update_user` either: changing a
+    language must not sign the account out everywhere."""
+    if lang not in LANGS:
+        raise ValueError(lang)
+    conn = db.connect()
+    try:
+        conn.execute("UPDATE users SET lang = ? WHERE id = ?", (lang, uid))
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def set_must_change(uid: int, problem: Optional[str]):
@@ -444,4 +464,5 @@ def public_user(**kwargs) -> dict:
             "pw_problem": u.get("pw_problem") or "",
             "twofa": bool(u.get("totp_secret")),
             "twofa_required": twofa_required(u),
-            "needs_2fa_setup": needs_2fa_setup(u)}
+            "needs_2fa_setup": needs_2fa_setup(u),
+            "lang": u.get("lang") or ""}

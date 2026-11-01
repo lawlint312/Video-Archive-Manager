@@ -11,6 +11,8 @@ import ScanProgress from './ScanProgress.vue'
 import ScopePicker from './ScopePicker.vue'
 import VideoPlayer from './VideoPlayer.vue'
 import Icon from './Icon.vue'
+import { t } from '../i18n'
+import { ts } from '../serverstrings.js'
 import DupHistory from './DupHistory.vue'
 
 
@@ -37,7 +39,7 @@ async function openHist(id) {
     showHistory.value = false
     scopeOpen.value = false
     filter.value = 'all'
-  } catch (e) { error.value = '開啟紀錄失敗：' + errText(e) }
+  } catch (e) { error.value = t('開啟紀錄失敗：') + errText(e) }
 }
 const picker = ref(null)
 const selected = ref([])
@@ -68,7 +70,7 @@ function fmtWhen(t) {
 }
 
 async function scan() {
-  if (!selected.value.length) { error.value = '請至少選擇一個資料夾'; return }
+  if (!selected.value.length) { error.value = t('請至少選擇一個資料夾'); return }
   error.value = ''
   persist()
   scopeOpen.value = false
@@ -192,12 +194,12 @@ async function retryFailed() {
     for (const g of groups.value) rescore(g)
     reportErrors(r.errors)
   } catch (e) {
-    alert('重試失敗：' + errText(e))
+    alert(t('重試失敗：') + errText(e))
   } finally { executing.value = false }
 }
 
 async function delOne(g, f) {
-  if (!confirm(`確定要永久刪除？\n\n${f.name}`)) return
+  if (!confirm(t('確定要永久刪除？') + `\n\n${f.name}`)) return
   f.error = null
   try {
     await releaseIfPlaying([f.path])
@@ -208,14 +210,14 @@ async function delOne(g, f) {
     g.touched = true
     rescore(g)
   } catch (e) {
-    f.error = e.detail || `刪除失敗（${e.status}）`
+    f.error = ts(e.detail) || t('刪除失敗（{status}）', { status: e.status })
   }
 }
 
 async function keepOne(g, keep) {
   const doomed = g.files.filter(f => f !== keep && !f.deleted)
   if (!doomed.length) return
-  if (!confirm(`保留：\n  ${keep.name}\n\n刪除：\n` +
+  if (!confirm(t('保留：') + `\n  ${keep.name}\n\n` + t('刪除：') + '\n' +
                doomed.map(f => '  ' + f.name).join('\n'))) return
   const paths = doomed.map(f => f.path)
   await releaseIfPlaying(paths)
@@ -251,16 +253,8 @@ const t2Bytes = computed(() => t2Targets.value.reduce((n, t) => n + t.f.size, 0)
 async function executeTier2() {
   const targets = t2Targets.value
   if (!targets.length) return
-  if (!confirm(
-      `將刪除 ${targets.length} 個 Tier 2 重複檔案，釋出約 ${fmtSize(t2Bytes.value)}
-
-` +
-      `僅處理「剛好兩個檔案」且相似度距離 ≤ ${t2Max.value} 的組別。
-` +
-      `三個以上的組別容易誤判，一律排除。
-
-` +
-      `⚠ Tier 2 是「畫面相似」而非「檔案相同」，請確認你接受這個風險。`)) return
+  if (!confirm(t('將刪除 {n} 個 Tier 2 重複檔案，釋出約 {size}\n\n僅處理「剛好兩個檔案」且相似度距離 ≤ {max} 的組別。\n三個以上的組別容易誤判，一律排除。\n\n⚠ Tier 2 是「畫面相似」而非「檔案相同」，請確認你接受這個風險。',
+                 { n: targets.length, size: fmtSize(t2Bytes.value), max: t2Max.value }))) return
 
   executing.value = true
   try {
@@ -276,7 +270,7 @@ async function executeTier2() {
     for (const g of tier2Groups.value) rescore(g)
     reportErrors(r.errors)
   } catch (e) {
-    alert('批次刪除失敗：' + errText(e))
+    alert(t('批次刪除失敗：') + errText(e))
   } finally { executing.value = false }
 }
 
@@ -285,16 +279,17 @@ const executing = ref(false)
 async function executeAuto() {
   const targets = autoTargets.value
   if (!targets.length) {
-    alert('沒有可批次執行的項目。\n（Tier 2 不同畫質組別需人工個別確認）')
+    alert(t('沒有可批次執行的項目。\n（Tier 2 不同畫質組別需人工個別確認）'))
     return
   }
   const skip = []
-  if (tier1.value.some(g => g.certain && g.touched)) skip.push('已手動處理的組')
-  if (tier2Groups.value.length) skip.push(`${tier2Groups.value.length} 組 Tier 2 需人工確認`)
+  if (tier1.value.some(g => g.certain && g.touched)) skip.push(t('已手動處理的組'))
+  if (tier2Groups.value.length) skip.push(t('{n} 組 Tier 2 需人工確認', { n: tier2Groups.value.length }))
   if (!confirm(
-      `將刪除 ${targets.length} 個 Tier 1 重複檔案，釋出約 ${fmtSize(autoBytes.value)}\n\n` +
-      `（僅處理 Tier 1 有明確建議且未手動處理的組別）` +
-      (skip.length ? `\n⚠ 已跳過：${skip.join('、')}` : '') + '\n\n確定執行？')) return
+      t('將刪除 {n} 個 Tier 1 重複檔案，釋出約 {size}\n\n（僅處理 Tier 1 有明確建議且未手動處理的組別）',
+        { n: targets.length, size: fmtSize(autoBytes.value) }) +
+      (skip.length ? '\n' + t('⚠ 已跳過：{list}', { list: skip.join(t('、')) }) : '') +
+      '\n\n' + t('確定執行？'))) return
 
   executing.value = true
   try {
@@ -310,7 +305,7 @@ async function executeAuto() {
     for (const g of tier1.value) rescore(g)
     reportErrors(r.errors)
   } catch (e) {
-    alert('批次刪除失敗：' + errText(e))
+    alert(t('批次刪除失敗：') + errText(e))
   } finally { executing.value = false }
 }
 </script>
@@ -321,13 +316,13 @@ async function executeAuto() {
       <div v-if="!scopeOpen && !showHistory" class="barrow">
         <button class="scopebar" @click="reopenScope">
         <Icon name="chevronRight" :size="13" />
-        範圍：待分類 {{ inboxOn }} · 歸檔 {{ charsOn }}
+        {{ t('範圍：待分類 {inbox} · 歸檔 {chars}', { inbox: inboxOn, chars: charsOn }) }}
         <span v-if="tier2" class="t2tag">+ Tier 2</span>
-        <span v-if="dedup.savedAt" class="oldtag">上次掃描 {{ fmtWhen(dedup.savedAt) }}</span>
-        <span class="chg">重新掃描</span>
+        <span v-if="dedup.savedAt" class="oldtag">{{ t('上次掃描 {time}', { time: fmtWhen(dedup.savedAt) }) }}</span>
+        <span class="chg">{{ t('重新掃描') }}</span>
         </button>
-        <button class="histbtn" title="之前的掃描報告" @click="showHistory = true">
-          <Icon name="history" :size="13" /> 歷史紀錄</button>
+        <button class="histbtn" :title="t('之前的掃描報告')" @click="showHistory = true">
+          <Icon name="history" :size="13" /> {{ t('歷史紀錄') }}</button>
       </div>
 
       <DupHistory v-if="showHistory" class="histpane" kind="video"
@@ -343,21 +338,21 @@ async function executeAuto() {
         <div class="opts">
           <label class="opt">
             <input type="checkbox" v-model="tier2" :disabled="dedup.running" />
-            同時掃描不同畫質的重複（Tier 2 — 時長 + 幀感知雜湊，較慢）
+            {{ t('同時掃描不同畫質的重複（Tier 2 — 時長 + 幀感知雜湊，較慢）') }}
           </label>
           <label class="opt" :class="{ off: !tier2 }">
-            時長容差
+            {{ t('時長容差') }}
             <input type="number" v-model.number="threshold" min="0" max="30"
-                   :disabled="dedup.running || !tier2" style="width:56px" /> 秒
+                   :disabled="dedup.running || !tier2" style="width:56px" /> {{ t('秒') }}
           </label>
           <span class="spacer"></span>
           <button class="histbtn" :disabled="dedup.running" @click="showHistory = true">
-            <Icon name="history" :size="13" /> 歷史紀錄</button>
+            <Icon name="history" :size="13" /> {{ t('歷史紀錄') }}</button>
           <button class="btn" :disabled="dedup.running || !selected.length" @click="scan">
-            {{ dedup.running ? '掃描中…' : '開始掃描' }}
+            {{ dedup.running ? t('掃描中…') : t('開始掃描') }}
           </button>
         </div>
-        <div class="tip">Tier 2 可找出不同畫質（720p vs 1080p）的同一影片，需讀取每部影片的幀，檔案多時耗時較長。</div>
+        <div class="tip">{{ t('Tier 2 可找出不同畫質（720p vs 1080p）的同一影片，需讀取每部影片的幀，檔案多時耗時較長。') }}</div>
       </div>
 
       <ScanProgress v-if="dedup.running" :progress="dedup.progress"
@@ -376,54 +371,54 @@ async function executeAuto() {
              Saying so is the difference between "沒有重複" and "還沒找完". -->
         <div v-if="dedup.partial" class="partial ib">
           <Icon name="warn" :size="14" />
-          這份報告來自<b>中途停止</b>的掃描，只涵蓋已完成的部分；要完整結果請重新掃描。
+          {{ t('這份報告來自') }}<b>{{ t('中途停止') }}</b>{{ t('的掃描，只涵蓋已完成的部分；要完整結果請重新掃描。') }}
         </div>
         <div v-if="!groups.length" class="empty ib">
           <Icon name="check" :size="15" />
-          {{ dedup.partial ? '停止前尚未發現重複影片' : '未發現重複影片' }}</div>
+          {{ dedup.partial ? t('停止前尚未發現重複影片') : t('未發現重複影片') }}</div>
 
         <template v-else>
           <div class="summary">
-            發現 <b>{{ groups.length }}</b> 組重複　可釋出約 <b>{{ fmtSize(totalWaste) }}</b>　｜
-            <span class="t1dot">●</span> Tier 1 <b>{{ tier1.length }}</b> 組
+            {{ t('發現') }} <b>{{ groups.length }}</b> {{ t('組重複') }}　{{ t('可釋出約') }} <b>{{ fmtSize(totalWaste) }}</b>　｜
+            <span class="t1dot">●</span> Tier 1 <b>{{ tier1.length }}</b> {{ t('組') }}
             <template v-if="tier2Groups.length">
-              　<span class="t2dot">●</span> Tier 2（不同畫質）<b>{{ tier2Groups.length }}</b> 組
+              　<span class="t2dot">●</span> {{ t('Tier 2（不同畫質）') }} <b>{{ tier2Groups.length }}</b> {{ t('組') }}
             </template>
-            　自動建議 <b class="ok">{{ certainN }}</b> 組
-            　需人工確認 <b class="warnc">{{ uncertainN }}</b> 組
+            　{{ t('自動建議') }} <b class="ok">{{ certainN }}</b> {{ t('組') }}
+            　{{ t('需人工確認') }} <b class="warnc">{{ uncertainN }}</b> {{ t('組') }}
           </div>
 
           <div class="legend">
-            <span class="lg keep">■ 建議保留</span>
-            <span class="lg del">■ 建議刪除</span>
-            <span class="lg unsure">■ 需人工確認</span>
+            <span class="lg keep">■ {{ t('建議保留') }}</span>
+            <span class="lg del">■ {{ t('建議刪除') }}</span>
+            <span class="lg unsure">■ {{ t('需人工確認') }}</span>
           </div>
 
           <!-- Without the delete permission every button below would only be
                refused by the server (/api/media/delete needs it): say so once
                instead of offering them. -->
-          <div v-if="!can('delete')" class="noperm">這個帳號沒有「刪除檔案」的權限：可以看報告、播放比對，刪除要由有權限的帳號來做</div>
+          <div v-if="!can('delete')" class="noperm">{{ t('這個帳號沒有「刪除檔案」的權限：可以看報告、播放比對，刪除要由有權限的帳號來做') }}</div>
           <div v-else class="ctrl">
             <button class="btn exec ib" :disabled="!autoTargets.length || executing"
                     @click="executeAuto">
               <Icon name="check" :size="13" />
-              執行 Tier 1 建議（{{ autoTargets.length }} 個檔案，釋出 {{ fmtSize(autoBytes) }}）
+              {{ t('執行 Tier 1 建議（{n} 個檔案，釋出 {size}）', { n: autoTargets.length, size: fmtSize(autoBytes) }) }}
             </button>
             <button v-if="tier2Groups.length" class="btn exec t2exec ib"
                     :disabled="!t2Targets.length || executing" @click="executeTier2">
               <Icon name="check" :size="13" />
-              執行 Tier 2 建議（{{ t2Targets.length }} 個檔案，釋出 {{ fmtSize(t2Bytes) }}）
+              {{ t('執行 Tier 2 建議（{n} 個檔案，釋出 {size}）', { n: t2Targets.length, size: fmtSize(t2Bytes) }) }}
             </button>
             <label v-if="tier2Groups.length" class="t2thr">
-              相似度 ≤
+              {{ t('相似度 ≤') }}
               <input type="number" v-model.number="t2Max" min="0" max="20"
                      style="width:46px" />
-              <span class="mini">僅雙檔組</span>
+              <span class="mini">{{ t('僅雙檔組') }}</span>
             </label>
             <button class="btn filt ib" :class="{ on: filter === 'manual' }"
                     :disabled="!manualN"
                     @click="filter = filter === 'manual' ? 'all' : 'manual'">
-              <Icon name="warn" :size="13" /> 只看需人工確認（{{ manualN }} 組）
+              <Icon name="warn" :size="13" /> {{ t('只看需人工確認（{n} 組）', { n: manualN }) }}
             </button>
             <!-- identical to the button above whenever every manual group is a
                  Tier 2 one, which is the common case; two buttons that filter
@@ -431,16 +426,16 @@ async function executeAuto() {
             <button v-if="tier2Groups.length && tier2Groups.length !== manualN"
                     class="btn filt t2 ib" :class="{ on: filter === 'tier2' }"
                     @click="filter = filter === 'tier2' ? 'all' : 'tier2'">
-              <Icon name="dot" :size="13" /> 只看 Tier 2（{{ tier2Groups.length }} 組）
+              <Icon name="dot" :size="13" /> {{ t('只看 Tier 2（{n} 組）', { n: tier2Groups.length }) }}
             </button>
           </div>
 
           <div v-if="failed.length" class="failbar">
             <Icon name="warn" :size="14" />
-            <span><b>{{ failed.length }}</b> 個檔案刪除失敗，各列後方有原因</span>
+            <span><b>{{ failed.length }}</b> {{ t('個檔案刪除失敗，各列後方有原因') }}</span>
             <span class="spacer"></span>
             <button class="btn" :disabled="executing" @click="retryFailed">
-              {{ executing ? '重試中…' : '重試全部失敗的' }}</button>
+              {{ executing ? t('重試中…') : t('重試全部失敗的') }}</button>
           </div>
 
           <div class="results" ref="resultsEl">
@@ -449,18 +444,18 @@ async function executeAuto() {
               <div class="ghead">
                 <span :class="g.tier === 2 ? 't2txt' : 't1txt'">
                   <span :class="g.tier === 2 ? 't2dot' : 't1dot'">●</span>
-                  {{ g.tier === 2 ? 'Tier 2 · 不同畫質相似影片（請人工確認）'
-                                  : 'Tier 1 · 檔案重複（大小/雜湊相符）' }}
+                  {{ g.tier === 2 ? t('Tier 2 · 不同畫質相似影片（請人工確認）')
+                                  : t('Tier 1 · 檔案重複（大小/雜湊相符）') }}
                 </span>
                 <span v-if="g.tier === 2 && g.distance !== null" class="dist"
                       :class="{ far: g.distance > t2Max }"
-                      title="取樣影格的平均漢明距離，0 = 完全相同">
-                  距離 {{ g.distance }}</span>
+                      :title="t('取樣影格的平均漢明距離，0 = 完全相同')">
+                  {{ t('距離 {n}', { n: g.distance }) }}</span>
                 <span v-if="g.tier === 2 && g.files.filter(f => !f.deleted).length > 2"
-                      class="manyfiles" title="三個以上的組別容易誤判，批次執行不會處理">
-                  {{ g.files.filter(f => !f.deleted).length }} 檔</span>
+                      class="manyfiles" :title="t('三個以上的組別容易誤判，批次執行不會處理')">
+                  {{ t('{n} 檔', { n: g.files.filter(f => !f.deleted).length }) }}</span>
                 <span v-if="viewed && g.files.includes(viewed)" class="viewing ib">
-                  <Icon name="eye" :size="12" /> 目前檢視中</span>
+                  <Icon name="eye" :size="12" /> {{ t('目前檢視中') }}</span>
               </div>
 
               <template v-for="f in g.files" :key="f.path">
@@ -475,13 +470,13 @@ async function executeAuto() {
                 </span>
                 <span class="col sz">{{ fmtSize(f.size) }}</span>
                 <span class="col dt">{{ fmtDate(f.mtime) }}</span>
-                <button class="ib icon play" title="播放" :disabled="f.deleted"
+                <button class="ib icon play" :title="t('播放')" :disabled="f.deleted"
                         @click="play(f)"><Icon name="play" :size="12" /></button>
                 <template v-if="can('delete')">
-                  <button class="ib icon trash" title="刪除此檔案" :disabled="f.deleted"
+                  <button class="ib icon trash" :title="t('刪除此檔案')" :disabled="f.deleted"
                           @click="delOne(g, f)"><Icon name="trash" :size="12" /></button>
                   <!-- deletes the others in the group -->
-                  <button class="keepbtn" :disabled="f.deleted" @click="keepOne(g, f)">保留此項</button>
+                  <button class="keepbtn" :disabled="f.deleted" @click="keepOne(g, f)">{{ t('保留此項') }}</button>
                 </template>
               </div>
               <!-- whatever the OS actually said, verbatim. Must stay inside the

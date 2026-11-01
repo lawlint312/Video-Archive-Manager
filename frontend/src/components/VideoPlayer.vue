@@ -4,6 +4,7 @@ import { usePlayerHotkeys, loadPlayerAudio, savePlayerAudio } from '../player'
 import { createWatchGate } from '../videoflags'
 import { store } from '../store'
 import Icon from './Icon.vue'
+import { t } from '../i18n'
 
 const props = defineProps({
   src: { type: String, required: true },
@@ -173,7 +174,7 @@ onBeforeUnmount(() => {
       <!-- Only rendered once the parent has confirmed the subtitle exists: a
            <track> pointing at a 404 still gives the browser a subtitle button
            that does nothing. -->
-      <track v-if="subtitle" kind="subtitles" label="字幕" default
+      <track v-if="subtitle" kind="subtitles" :label="t('字幕')" default
              :src="subtitle" @load="showSubs" />
     </video>
 
@@ -182,16 +183,16 @@ onBeforeUnmount(() => {
       <div v-if="toast" class="toast">{{ toast }}</div>
     </transition>
 
-    <button class="help" @click="showHelp = !showHelp" title="快捷鍵"><Icon name="keyboard" :size="15" /></button>
+    <button class="help" @click="showHelp = !showHelp" :title="t('快捷鍵')"><Icon name="keyboard" :size="15" /></button>
     <div v-if="showHelp" class="helpbox" @click="showHelp = false">
-      <div><b>空白 / K</b> 播放暫停</div>
-      <div><b>← →</b> 快退/快進 {{ store.seekSeconds }} 秒</div>
-      <div><b>J / L</b> ∓10 秒</div>
-      <div><b>↑ ↓</b> 音量</div>
-      <div><b>M</b> 靜音　<b>F</b> 全螢幕</div>
-      <div><b>0-9</b> 跳至 0%-90%</div>
-      <div><b>, .</b> 播放速度</div>
-      <div><b>Esc</b> 關閉</div>
+      <div><b>{{ t('空白') }} / K</b> {{ t('播放暫停') }}</div>
+      <div><b>← →</b> {{ t('快退/快進 {n} 秒', { n: store.seekSeconds }) }}</div>
+      <div><b>J / L</b> {{ t('∓{n} 秒', { n: 10 }) }}</div>
+      <div><b>↑ ↓</b> {{ t('音量') }}</div>
+      <div><b>M</b> {{ t('靜音') }}　<b>F</b> {{ t('全螢幕') }}</div>
+      <div><b>0-9</b> {{ t('跳至 0%-90%') }}</div>
+      <div><b>, .</b> {{ t('播放速度') }}</div>
+      <div><b>Esc</b> {{ t('關閉') }}</div>
     </div>
   </div>
 </template>

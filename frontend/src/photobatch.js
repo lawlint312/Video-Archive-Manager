@@ -9,6 +9,7 @@
 //   * a chunk boundary that skips a file;
 //   * a result pass that drops a photo from the grid although the server said
 //     it could not be deleted.
+import { t } from './i18n.js'
 
 /** Toggle one path, returning a NEW set (Vue does not track Set mutation). */
 export function toggle(picked, path) {
@@ -67,7 +68,7 @@ export function applyResult({ items, noPerson, picked }, deleted, errors) {
 /** "已刪除 12 張照片" / "刪除 10 張，2 張失敗（原因標在卡片上）" */
 export function resultMessage(deletedCount, failedCount) {
   if (failedCount) {
-    return `刪除 ${deletedCount} 張，${failedCount} 張失敗（原因標在卡片上）`
+    return t('刪除 {n} 張，{failed} 張失敗（原因標在卡片上）', { n: deletedCount, failed: failedCount })
   }
-  return `已刪除 ${deletedCount} 張照片`
+  return t('已刪除 {n} 張照片', { n: deletedCount })
 }

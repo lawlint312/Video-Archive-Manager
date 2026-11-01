@@ -6,6 +6,7 @@ import { store, can, setStatus } from '../store'
 import { releaseFile } from '../player'
 import VideoPlayer from './VideoPlayer.vue'
 import Icon from './Icon.vue'
+import { t } from '../i18n'
 
 const props = defineProps({ video: { type: Object, required: true } })
 const emit = defineEmits(['archive', 'queued', 'deleted', 'skip', 'close',
@@ -80,7 +81,7 @@ async function runFaceMatch() {
     }
   } catch (e) {
     faceMatches.value = []
-    if (e.status !== 503) alert('辨識失敗：' + errText(e))
+    if (e.status !== 503) alert(t('辨識失敗：') + errText(e))
   } finally { faceBusy.value = false }
 }
 
@@ -99,17 +100,17 @@ async function runJavLookup(refresh = false) {
     if (first?.known && !person.value.trim()) person.value = first.name
   } catch (e) {
     jav.value = { id: null, status: 'error', suggestions: [] }
-    alert('番號查詢失敗：' + errText(e))
+    alert(t('番號查詢失敗：') + errText(e))
   } finally { javBusy.value = false }
 }
 
 const javNote = computed(() => {
   const j = jav.value
   if (!j) return ''
-  return j.status === 'no_id'        ? '檔名中沒有可辨識的番號'
-       : j.status === 'not_found'    ? `資料庫查無 ${j.id}`
-       : j.status === 'no_performer' ? `${j.id} 有資料但未列出演員`
-       : j.status === 'error'        ? '查詢失敗'
+  return j.status === 'no_id'        ? t('檔名中沒有可辨識的番號')
+       : j.status === 'not_found'    ? t('資料庫查無 {id}', { id: j.id })
+       : j.status === 'no_performer' ? t('{id} 有資料但未列出演員', { id: j.id })
+       : j.status === 'error'        ? t('查詢失敗')
        : ''
 })
 
@@ -138,7 +139,7 @@ async function toggleFav() {
     emit('marked', { path: props.video.path, fav: next })
   } catch (e) {
     fav.value = !next
-    setStatus('最愛儲存失敗：' + errText(e), 'warn')
+    setStatus(t('最愛儲存失敗：') + errText(e), 'warn')
   }
 }
 
@@ -169,7 +170,7 @@ function searchId() {
 
 async function doArchive() {
   const name = person.value.trim()
-  if (!name) { alert('請先選擇或輸入角色名稱'); return }
+  if (!name) { alert(t('請先選擇或輸入角色名稱')); return }
   busy.value = true
   try {
     // pre-flight: duplicate + free space, like the desktop app
@@ -178,21 +179,21 @@ async function doArchive() {
       body: JSON.stringify({ path: props.video.path, person: name }),
     })
     if (!chk.fits) {
-      alert(`目標磁碟空間不足\n需要 ${fmtSize(chk.size)}，剩餘 ${fmtSize(chk.free)}`)
+      alert(t('目標磁碟空間不足\n需要 {need}，剩餘 {free}', { need: fmtSize(chk.size), free: fmtSize(chk.free) }))
       return
     }
     if (chk.duplicate &&
-        !confirm(`「${name}」資料夾中疑似已有相同影片：\n\n${chk.duplicate}\n\n仍要繼續歸檔？`)) {
+        !confirm(t('「{name}」資料夾中疑似已有相同影片：\n\n{file}\n\n仍要繼續歸檔？', { name, file: chk.duplicate }))) {
       return
     }
     // Hand the move to the app-level queue: the transfer keeps running (and is
     // reported in the status bar) even if you move on to the next video.
-    doneMsg.value = `已加入佇列 →「${name}」`
+    doneMsg.value = t('已加入佇列 →「{name}」', { name })
     emit('archive', { video: props.video, person: name })
     await new Promise(r => setTimeout(r, 800))
     emit('queued')
   } catch (e) {
-    alert('歸檔失敗：' + errText(e))
+    alert(t('歸檔失敗：') + errText(e))
   } finally {
     busy.value = false
   }
@@ -204,25 +205,25 @@ async function doDelete() {
                          store.user?.role)
   let force = false
   if (guard.kind === 'own' || (guard.kind === 'others' && !guard.canForce)) {
-    alert(favGuardMessage(props.video.name, guard, '在備忘旁邊'))
+    alert(favGuardMessage(props.video.name, guard, t('在備忘旁邊')))
     return
   }
   if (guard.kind === 'others') {
     // the admin path: this is the confirmation, so no second one follows
     if (!confirm(favGuardMessage(props.video.name, guard))) return
     force = true
-  } else if (!confirm(`確定永久刪除？\n\n${props.video.name}`)) return
+  } else if (!confirm(t('確定永久刪除？') + `\n\n${props.video.name}`)) return
   try {
     // an open player holds the file, and Windows will not delete it then
     if (playing.value) await releaseFile(() => { playing.value = false })
     await api('/api/media/delete', {
       method: 'POST', body: JSON.stringify({ path: props.video.path, force_fav: force }),
     })
-    setStatus(`已刪除 ${props.video.name}`, 'ok')
+    setStatus(t('已刪除 {name}', { name: props.video.name }), 'ok')
     emit('deleted', props.video)
   } catch (e) {
-    setStatus('刪除失敗', 'warn')
-    alert('刪除失敗：' + errText(e))
+    setStatus(t('刪除失敗'), 'warn')
+    alert(t('刪除失敗：') + errText(e))
   }
 }
 
@@ -247,7 +248,7 @@ onMounted(() => { loadInfo(); loadChars() })
         <div v-else>
           <div class="big" @click="playing = true">
             <img :src="bigFrame || thumbUrl(video.path, 0.5, 960)" />
-            <span class="playhint ib"><Icon name="play" :size="18" /> 點擊播放</span>
+            <span class="playhint ib"><Icon name="play" :size="18" /> {{ t('點擊播放') }}</span>
           </div>
           <div class="frames">
             <img v-for="p in PCTS" :key="p" :src="thumbUrl(video.path, p, 320)"
@@ -266,51 +267,51 @@ onMounted(() => { loadInfo(); loadChars() })
 
         <div v-if="info?.video_id" class="vid">
           <Icon name="profile" :size="13" /> {{ info.video_id }}
-          <button class="btn ghost sm ib" @click="searchId"><Icon name="search" :size="12" /> 查詢</button>
+          <button class="btn ghost sm ib" @click="searchId"><Icon name="search" :size="12" /> {{ t('查詢') }}</button>
         </div>
 
         <label class="lab">
-          備忘
-          <span v-if="noteSaved" class="saved ib"><Icon name="check" :size="12" /> 已儲存</span>
-          <span v-if="watched" class="seentag ib" title="播放超過 5 秒就會記錄">
-            <Icon name="eye" :size="11" /> 看過</span>
+          {{ t('備忘') }}
+          <span v-if="noteSaved" class="saved ib"><Icon name="check" :size="12" /> {{ t('已儲存') }}</span>
+          <span v-if="watched" class="seentag ib" :title="t('播放超過 5 秒就會記錄')">
+            <Icon name="eye" :size="11" /> {{ t('看過') }}</span>
           <!-- Deliberately not behind 編輯模式: these are the viewer's own
                record, not a change to the file. -->
           <button class="favbtn" :class="{ on: fav }"
-                  :title="fav ? '取消我的最愛' : '加入我的最愛'"
+                  :title="fav ? t('取消我的最愛') : t('加入我的最愛')"
                   @click="toggleFav">
             <Icon name="heart" :size="15" />
           </button>
         </label>
         <textarea v-model="note" rows="2" :readonly="!canInfo"
-                  placeholder="輸入備忘（角色名、片商、標籤等）…"
+                  :placeholder="t('輸入備忘（角色名、片商、標籤等）…')"
                   @blur="saveNote"></textarea>
 
         <!-- wrapped in an element rather than left as a bare template so the
              mobile rule has something to hide; the memo above stays readable -->
         <div v-if="canArchive" class="archivetools no-mobile">
           <label class="lab">
-            歸檔到角色
+            {{ t('歸檔到角色') }}
             <button v-if="store.faceAvailable" class="facebtn ib"
                     :disabled="faceBusy" @click="runFaceMatch">
-              <Icon name="face" :size="12" /> {{ faceBusy ? '辨識中…' : '人臉辨識' }}
+              <Icon name="face" :size="12" /> {{ faceBusy ? t('辨識中…') : t('人臉辨識') }}
             </button>
             <button class="facebtn javbtn ib" :disabled="javBusy"
-                    title="用檔名中的番號查 javdatabase"
+                    :title="t('用檔名中的番號查 javdatabase')"
                     @click="runJavLookup(false)">
-              <Icon name="search" :size="12" /> {{ javBusy ? '查詢中…' : 'JAV DB' }}
+              <Icon name="search" :size="12" /> {{ javBusy ? t('查詢中…') : 'JAV DB' }}
             </button>
           </label>
           <div v-if="jav" class="matches">
             <template v-if="jav.suggestions?.length">
               <button v-for="sg in jav.suggestions" :key="sg.slug"
                       class="mchip javchip" :class="{ unknown: !sg.known }"
-                      :title="sg.known ? `已有資料夾：${sg.name}`
-                                       : '尚無此角色資料夾，點選後會以此名稱建立'"
+                      :title="sg.known ? t('已有資料夾：{name}', { name: sg.name })
+                                       : t('尚無此角色資料夾，點選後會以此名稱建立')"
                       @click="person = sg.name">
                 {{ sg.name }}
                 <span v-if="sg.romaji && sg.romaji !== sg.name" class="conf">{{ sg.romaji }}</span>
-                <span v-if="!sg.known" class="newtag">新</span>
+                <span v-if="!sg.known" class="newtag">{{ t('新') }}</span>
               </button>
               <span class="vidtag">{{ jav.id }}</span>
             </template>
@@ -324,22 +325,22 @@ onMounted(() => { loadInfo(); loadChars() })
                 {{ m.name }} <span class="conf">{{ m.confidence }}%</span>
               </button>
             </template>
-            <span v-else class="nomatch">（未找到符合的人）</span>
+            <span v-else class="nomatch">{{ t('（未找到符合的人）') }}</span>
           </div>
-          <input v-model="person" list="charlist" placeholder="選擇或輸入新角色名…" />
+          <input v-model="person" list="charlist" :placeholder="t('選擇或輸入新角色名…')" />
           <datalist id="charlist">
             <option v-for="c in chars" :key="c" :value="c" />
           </datalist>
 
           <div v-if="doneMsg" class="donebox ib"><Icon name="check" :size="15" /> {{ doneMsg }}</div>
           <div v-else class="actions">
-            <button class="btn ib" :disabled="busy" @click="doArchive"><Icon name="check" :size="14" /> 歸檔</button>
-            <button class="btn ghost ib" :disabled="busy" @click="emit('skip')"><Icon name="skip" :size="14" /> 跳過</button>
+            <button class="btn ib" :disabled="busy" @click="doArchive"><Icon name="check" :size="14" /> {{ t('歸檔') }}</button>
+            <button class="btn ghost ib" :disabled="busy" @click="emit('skip')"><Icon name="skip" :size="14" /> {{ t('跳過') }}</button>
             <button class="btn del ib" :disabled="busy" @click="doDelete"
-                    title="永久刪除這部影片"><Icon name="trash" :size="14" /> 刪除</button>
+                    :title="t('永久刪除這部影片')"><Icon name="trash" :size="14" /> {{ t('刪除') }}</button>
           </div>
         </div>
-        <div v-else class="ro">切換到 🔧 編輯模式即可歸檔</div>
+        <div v-else class="ro">{{ t('切換到 🔧 編輯模式即可歸檔') }}</div>
       </div>
     </div>
   </div>

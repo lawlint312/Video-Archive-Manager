@@ -9,6 +9,7 @@
 // It is also the text that warns about the destructive parts of this tool, so
 // it is worth pinning down on its own merits: which actions delete the source,
 // which replace it, and which are lossy.
+import { t, N_ } from './i18n.js'
 
 export function convertWarning(picked) {
   const items = picked || []
@@ -32,22 +33,15 @@ export function convertWarning(picked) {
                                i.action !== 'audiofix' && i.action !== 'gapfix' &&
                                i.action !== 'gapcut').length
 
-  let msg = `處理 ${n} 個檔案？\n\n轉檔的部分驗證通過後會刪除原始檔。`
-  if (re) msg += `\n\n⚠ 其中 ${re} 個需要重編碼，畫質會有損失且無法還原。`
-  if (ip) msg += `\n\n⚠ 其中 ${ip} 個本來就是 .mp4，重編碼後會「直接取代原檔」` +
-                 `（驗證通過才換）。這些是瀏覽器播不動的檔案。`
-  if (rp) msg += `\n\n修復的 ${rp} 個「不會」刪除原始檔，` +
-                 `而且無法事先知道會損失多少畫面。`
-  if (rt) msg += `\n\n修正時序的 ${rt} 個會「直接取代原檔」（驗證通過才換）。` +
-                 `畫面逐格原樣複製、不重編碼，畫質不變。`
-  if (af) msg += `\n\n修復聲音的 ${af} 個會「直接取代原檔」（驗證通過才換）。` +
-                 `影像原樣複製、畫質不變；聲音重新編碼（約 192 kbps），壞掉的片段補成靜音。`
-  if (gf) msg += `\n\n修復斷訊的 ${gf} 個只丟掉斷訊前殘缺的畫格、不重新編碼，` +
-                 `修完會整支完整解碼驗證（每支需要幾分鐘），通過才取代原檔。`
-  if (cc) msg += `\n\n遮蔽損壞的 ${cc} 個會整支重新編碼（crf 23）、另存成 xxx_fix.mp4，` +
-                 `「不會」刪除原始檔。損壞的地方仍看得到花屏，但瀏覽器能正常播放與拖進度條；` +
-                 `修完到「壓縮」分頁的待決定清單比對後再決定。`
-  if (gc) msg += `\n\n去除空白的 ${gc} 個每一格都原樣複製、不重新編碼，只是片長變短；` +
-                 `驗證畫格數相同、空白已消失才取代原檔。`
+  let msg = t('處理 {n} 個檔案？\n\n轉檔的部分驗證通過後會刪除原始檔。', { n })
+  const add = (k, c) => { if (c) msg += '\n\n' + t(k, { n: c }) }
+  add(N_('⚠ 其中 {n} 個需要重編碼，畫質會有損失且無法還原。'), re)
+  add(N_('⚠ 其中 {n} 個本來就是 .mp4，重編碼後會「直接取代原檔」（驗證通過才換）。這些是瀏覽器播不動的檔案。'), ip)
+  add(N_('修復的 {n} 個「不會」刪除原始檔，而且無法事先知道會損失多少畫面。'), rp)
+  add(N_('修正時序的 {n} 個會「直接取代原檔」（驗證通過才換）。畫面逐格原樣複製、不重編碼，畫質不變。'), rt)
+  add(N_('修復聲音的 {n} 個會「直接取代原檔」（驗證通過才換）。影像原樣複製、畫質不變；聲音重新編碼（約 192 kbps），壞掉的片段補成靜音。'), af)
+  add(N_('修復斷訊的 {n} 個只丟掉斷訊前殘缺的畫格、不重新編碼，修完會整支完整解碼驗證（每支需要幾分鐘），通過才取代原檔。'), gf)
+  add(N_('遮蔽損壞的 {n} 個會整支重新編碼（crf 23）、另存成 xxx_fix.mp4，「不會」刪除原始檔。損壞的地方仍看得到花屏，但瀏覽器能正常播放與拖進度條；修完到「壓縮」分頁的待決定清單比對後再決定。'), cc)
+  add(N_('去除空白的 {n} 個每一格都原樣複製、不重新編碼，只是片長變短；驗證畫格數相同、空白已消失才取代原檔。'), gc)
   return msg
 }

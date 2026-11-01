@@ -2,6 +2,8 @@
 import { ref, onMounted } from 'vue'
 import { api, errText } from '../api'
 import Icon from './Icon.vue'
+import { t } from '../i18n'
+import { ts } from '../serverstrings.js'
 
 const props = defineProps({
   char: { type: Object, required: true },   // merged entry with .paths
@@ -48,18 +50,19 @@ async function buildPlan() {
     summary.value = sum
     capacity.value = cap
   } catch (e) {
-    error.value = '分析失敗：' + errText(e)
+    error.value = t('分析失敗：') + errText(e)
   } finally { loading.value = false }
 }
 
 async function run() {
   if (capacity.value && !capacity.value.fits) {
-    alert(`目標磁碟空間不足
-
-需要 ${fmtSize(capacity.value.need)}，剩餘 ${fmtSize(capacity.value.free)}`)
+    alert(t('目標磁碟空間不足\n\n需要 {need}，剩餘 {free}',
+            { need: fmtSize(capacity.value.need), free: fmtSize(capacity.value.free) }))
     return
   }
-  if (!confirm(`確定整合？\n\n${summary.value.move + summary.value.rename} 個檔案將移動到：\n${dstPath.value}\n\n${summary.value.delete} 個重複檔案將被刪除`)) return
+  if (!confirm(t('確定整合？\n\n{n} 個檔案將移動到：\n{dest}\n\n{dupes} 個重複檔案將被刪除',
+                 { n: summary.value.move + summary.value.rename, dest: dstPath.value,
+                   dupes: summary.value.delete }))) return
   running.value = true
   warnings.value = []
   try {
@@ -79,13 +82,13 @@ async function run() {
           if (j.result?.errors?.length) warnings.value.push(...j.result.errors)
           break
         }
-        if (j.status === 'error') { error.value = j.error; break }
+        if (j.status === 'error') { error.value = ts(j.error); break }
       }
     }
     emit('done')
     if (!warnings.value.length) emit('close')
   } catch (e) {
-    error.value = '整合失敗：' + errText(e)
+    error.value = t('整合失敗：') + errText(e)
   } finally { running.value = false; progress.value = null }
 }
 
@@ -96,28 +99,28 @@ onMounted(buildPlan)
   <div class="modal" @click.self="emit('close')">
     <div class="dlg">
       <div class="dhead">
-        <span class="ib"><Icon name="merge" :size="16" /> 整合資料夾 — {{ char.name }}</span>
+        <span class="ib"><Icon name="merge" :size="16" /> {{ t('整合資料夾') }} — {{ char.name }}</span>
         <button class="btn ghost" @click="emit('close')"><Icon name="close" :size="14" /></button>
       </div>
 
       <div class="body">
-        <label class="lab">整合到哪個位置（其他位置的檔案會搬過來）</label>
+        <label class="lab">{{ t('整合到哪個位置（其他位置的檔案會搬過來）') }}</label>
         <select v-model="dstPath" :disabled="running" @change="buildPlan">
           <option v-for="p in char.paths" :key="p" :value="p">{{ p }}</option>
         </select>
 
-        <div v-if="loading" class="msg">分析中…</div>
+        <div v-if="loading" class="msg">{{ t('分析中…') }}</div>
         <div v-else-if="error" class="msg err">{{ error }}</div>
         <template v-else-if="summary">
           <div class="cards">
-            <div class="card"><b>{{ summary.move }}</b><span>直接移動</span></div>
-            <div class="card"><b>{{ summary.rename }}</b><span>重命名後移動</span></div>
-            <div class="card danger"><b>{{ summary.delete }}</b><span>刪除重複</span></div>
+            <div class="card"><b>{{ summary.move }}</b><span>{{ t('直接移動') }}</span></div>
+            <div class="card"><b>{{ summary.rename }}</b><span>{{ t('重命名後移動') }}</span></div>
+            <div class="card danger"><b>{{ summary.delete }}</b><span>{{ t('刪除重複') }}</span></div>
           </div>
-          <div class="note">共搬移 {{ fmtSize(summary.bytes) }}；來源資料夾清空後會自動移除</div>
+          <div class="note">{{ t('共搬移 {size}；來源資料夾清空後會自動移除', { size: fmtSize(summary.bytes) }) }}</div>
 
           <div v-if="summary.rename" class="renames">
-            <div class="rlab">重命名清單</div>
+            <div class="rlab">{{ t('重命名清單') }}</div>
             <template v-for="g in plan" :key="g.src">
               <div v-for="p in g.plan.filter(x => x.action === 'rename')" :key="p.src" class="rrow">
                 {{ p.name }} → {{ p.dst.split('\\').pop() }}
@@ -128,29 +131,30 @@ onMounted(buildPlan)
 
         <div v-if="capacity" class="cap" :class="{ bad: !capacity.fits }">
           <template v-if="!capacity.crossVolume">
-            <Icon name="check" :size="13" /> 同一磁碟，直接改名即可完成，不需額外空間
+            <Icon name="check" :size="13" /> {{ t('同一磁碟，直接改名即可完成，不需額外空間') }}
           </template>
           <template v-else-if="capacity.free < 0">
-            <Icon name="warn" :size="13" /> 跨磁碟搬移 {{ fmtSize(capacity.need) }}，無法讀取目標剩餘空間
+            <Icon name="warn" :size="13" /> {{ t('跨磁碟搬移 {size}，無法讀取目標剩餘空間', { size: fmtSize(capacity.need) }) }}
           </template>
           <template v-else-if="capacity.fits">
-            <Icon name="check" :size="13" /> 跨磁碟搬移 {{ fmtSize(capacity.need) }}，
-            目標剩餘 {{ fmtSize(capacity.free) }}
+            <Icon name="check" :size="13" /> {{ t('跨磁碟搬移 {size}，目標剩餘 {free}',
+              { size: fmtSize(capacity.need), free: fmtSize(capacity.free) }) }}
           </template>
           <template v-else>
-            <Icon name="warn" :size="13" /> 空間不足：需要 {{ fmtSize(capacity.need) }}，
-            目標僅剩 {{ fmtSize(capacity.free) }}（差 {{ fmtSize(capacity.need - capacity.free) }}）
+            <Icon name="warn" :size="13" /> {{ t('空間不足：需要 {need}，目標僅剩 {free}（差 {short}）',
+              { need: fmtSize(capacity.need), free: fmtSize(capacity.free),
+                short: fmtSize(capacity.need - capacity.free) }) }}
           </template>
         </div>
 
         <div v-if="warnings.length" class="warns">
-          <div class="wh ib"><Icon name="warn" :size="14" /> 整合完成，但有需要你處理的項目：</div>
-          <div v-for="(w, i) in warnings" :key="i" class="wrow">{{ w }}</div>
+          <div class="wh ib"><Icon name="warn" :size="14" /> {{ t('整合完成，但有需要你處理的項目：') }}</div>
+          <div v-for="(w, i) in warnings" :key="i" class="wrow">{{ ts(w) }}</div>
         </div>
 
         <div v-if="progress" class="prog">
           <div class="ptxt">
-            {{ progress.phase === 'delete' ? '刪除' : '移動' }}
+            {{ progress.phase === 'delete' ? t('刪除') : t('移動') }}
             {{ progress.index ? `(${progress.index}/${progress.total})` : '' }}
             {{ progress.name }}
           </div>
@@ -164,9 +168,9 @@ onMounted(buildPlan)
              "分析中…" line reads as a dead button, not as "please wait". -->
         <button class="btn ib" :disabled="!summary || running || loading || capacity?.fits === false" @click="run">
           <Icon v-if="loading || running" name="spinner" :size="13" class="spin" />
-          {{ loading ? '分析中，請稍候…' : running ? '整合中…' : '確認整合' }}
+          {{ loading ? t('分析中，請稍候…') : running ? t('整合中…') : t('確認整合') }}
         </button>
-        <button class="btn ghost" :disabled="running" @click="emit('close')">取消</button>
+        <button class="btn ghost" :disabled="running" @click="emit('close')">{{ t('取消') }}</button>
       </div>
     </div>
   </div>

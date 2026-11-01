@@ -50,6 +50,28 @@ input:focus { outline: none; border-color: var(--accent); }
 }
 .btn.ghost:hover { background: var(--hover); }
 
+/* Scrollbars in the theme: a thin --dim thumb (the colour of the counts and
+   the empty-avatar icon; --hover was too dark to find) on no track, --accent
+   while hovered or dragged, no arrow buttons. Mouse-driven screens only — a phone's
+   scrollbar is an overlay that appears while scrolling, and styling it would
+   turn it into a permanent 8px strip.
+   Chrome/Edge/Safari get the ::-webkit-scrollbar rules, the only way to colour
+   the thumb on hover; they must not also see scrollbar-color, because since
+   Chrome 121 that switches the ::-webkit- rules off. Firefox gets the standard
+   properties (no hover colour there). A component that hides its scrollbar
+   (.tgroup) is more specific, so it stays hidden. */
+@media (hover: hover) and (pointer: fine) {
+  @supports selector(::-webkit-scrollbar) {
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--dim); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover, ::-webkit-scrollbar-thumb:active { background: var(--accent); }
+  }
+  @supports not selector(::-webkit-scrollbar) {
+    * { scrollbar-width: thin; scrollbar-color: var(--dim) transparent; }
+  }
+}
+
 /* icon + text: keeps a Lucide glyph and its label on one baseline */
 .ib { display: inline-flex; align-items: center; gap: 6px; }
 

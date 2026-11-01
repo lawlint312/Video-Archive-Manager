@@ -10,10 +10,13 @@
  * Worth special-casing because the raw message actively misleads: a new
  * feature reports "Not Found" and reads like a broken file path.
  */
+import { t } from './i18n.js'
+import { ts } from './serverstrings.js'
+
 function explain(path, status, detail) {
   if (status === 404 && detail === 'Not Found') {
     const route = String(path).split('?')[0]
-    return `執行中的後端沒有 ${route} 這個功能 —— 請重新啟動後端（stop.bat 然後 start.bat）`
+    return t('執行中的後端沒有 {route} 這個功能 —— 請重新啟動後端（stop.bat 然後 start.bat）', { route })
   }
   return detail
 }
@@ -25,9 +28,10 @@ function explain(path, status, detail) {
  *  field, so the user was shown "轉檔失敗：undefined" and nobody, including
  *  the log, could say what had happened. */
 export function errText(e) {
-  if (e == null) return '未知的錯誤'
-  if (typeof e === 'string') return e
-  return e.detail || e.message || (e.status ? `HTTP ${e.status}` : '未知的錯誤')
+  if (e == null) return t('未知的錯誤')
+  // the server speaks Traditional Chinese; ts() puts it in the interface language
+  if (typeof e === 'string') return ts(e)
+  return ts(e.detail) || e.message || (e.status ? `HTTP ${e.status}` : t('未知的錯誤'))
 }
 
 // Thin fetch wrapper. Always sends the session cookie (same-origin via Vite proxy).
@@ -50,7 +54,7 @@ export async function api(path, opts = {}) {
     // completed: backend down or restarting, the dev-server proxy unable to
     // connect, the page navigating away mid-request. It throws a bare
     // TypeError with no status, which is how "undefined" reached the screen.
-    throw { status: 0, detail: '無法連線到後端 —— 可能正在重新啟動，請稍候再試',
+    throw { status: 0, detail: t('無法連線到後端 —— 可能正在重新啟動，請稍候再試'),
             cause: e.message }
   }
   if (!r.ok) {
@@ -60,7 +64,7 @@ export async function api(path, opts = {}) {
     // have no JSON body at all, and `detail || status` would then show a bare
     // number with no clue what it was about.
     throw { status: r.status,
-            detail: explain(path, r.status, detail) || `伺服器回應 ${r.status}` }
+            detail: explain(path, r.status, detail) || t('伺服器回應 {status}', { status: r.status }) }
   }
   const ct = r.headers.get('content-type') || ''
   return ct.includes('application/json') ? r.json() : r

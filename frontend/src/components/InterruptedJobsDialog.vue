@@ -11,6 +11,8 @@
 import { ref } from 'vue'
 import { api, errText } from '../api'
 import Icon from './Icon.vue'
+import { t } from '../i18n'
+import { ts } from '../serverstrings.js'
 
 const props = defineProps({ jobs: { type: Array, default: () => [] } })
 const emit = defineEmits(['close', 'resumed'])
@@ -20,11 +22,12 @@ const busy = ref('')
 const error = ref('')
 
 function what(j) {
-  if (j.left === -1) return '掃描：會再跑一次，做過的部分有快取，很快就會追上'
-  if (j.left === 0) return j.total ? `${j.total} 個都已經處理完了` : '已經完成了'
-  if (j.left == null) return '還沒完成：繼續會從頭再做一次（半寫的檔案已清掉）'
-  const fail = j.failed ? `（其中 ${j.failed} 個失敗）` : ''
-  return `完成 ${j.finished}／${j.total}${fail}，剩 ${j.left} 個`
+  if (j.left === -1) return t('掃描：會再跑一次，做過的部分有快取，很快就會追上')
+  if (j.left === 0) return j.total ? t('{n} 個都已經處理完了', { n: j.total }) : t('已經完成了')
+  if (j.left == null) return t('還沒完成：繼續會從頭再做一次（半寫的檔案已清掉）')
+  const fail = j.failed ? t('（其中 {n} 個失敗）', { n: j.failed }) : ''
+  return t('完成 {done}／{total}{fail}，剩 {left} 個',
+           { done: j.finished, total: j.total, fail, left: j.left })
 }
 
 function when(sec) {
@@ -46,7 +49,7 @@ async function resume(j) {
     const r = await api(`/api/jobs/interrupted/${j.id}/resume`, { method: 'POST' })
     drop(j)
     if (r.job_id) emit('resumed', r)
-  } catch (e) { error.value = `${j.label}：${errText(e)}` }
+  } catch (e) { error.value = `${ts(j.label)}：${errText(e)}` }
   finally { busy.value = '' }
 }
 
@@ -65,34 +68,33 @@ async function dismiss(j) {
   <div class="modal" @click.self="emit('close')">
     <div class="dlg">
       <div class="dhead">
-        <span class="ib"><Icon name="warn" :size="15" /> 上次重啟時中斷的工作</span>
+        <span class="ib"><Icon name="warn" :size="15" /> {{ t('上次重啟時中斷的工作') }}</span>
         <span class="spacer"></span>
         <button class="btn ghost ib" @click="emit('close')">
-          <Icon name="close" :size="14" /> 稍後再說
+          <Icon name="close" :size="14" /> {{ t('稍後再說') }}
         </button>
       </div>
 
       <p class="intro">
-        服務重新啟動時，這些工作還在進行。會寫入檔案的工作不會自己繼續——
-        你可能就是為了停下它才重啟的。寫到一半的檔案已經清掉了。
+        {{ t('服務重新啟動時，這些工作還在進行。會寫入檔案的工作不會自己繼續——你可能就是為了停下它才重啟的。寫到一半的檔案已經清掉了。') }}
       </p>
 
       <div class="list">
         <div v-for="j in rows" :key="j.id" class="row">
           <div class="who">
-            <b>{{ j.label }}</b>
+            <b>{{ ts(j.label) }}</b>
             <div class="sub">{{ what(j) }}</div>
-            <div v-if="j.reason" class="sub warn">{{ j.reason }}</div>
-            <div class="sub">開始於 {{ when(j.started_at) }}</div>
+            <div v-if="j.reason" class="sub warn">{{ ts(j.reason) }}</div>
+            <div class="sub">{{ t('開始於 {time}', { time: when(j.started_at) }) }}</div>
           </div>
           <button v-if="j.left !== 0" class="btn small"
-                  :disabled="!!busy" @click="resume(j)">繼續</button>
+                  :disabled="!!busy" @click="resume(j)">{{ t('繼續') }}</button>
           <button class="btn ghost small" :disabled="!!busy" @click="dismiss(j)">
-            {{ j.left === 0 ? '知道了' : '略過' }}</button>
+            {{ j.left === 0 ? t('知道了') : t('略過') }}</button>
         </div>
       </div>
       <div v-if="error" class="err">{{ error }}</div>
-      <div class="note">「稍後再說」會留著這份清單，下次開啟網頁時再問一次。</div>
+      <div class="note">{{ t('「稍後再說」會留著這份清單，下次開啟網頁時再問一次。') }}</div>
     </div>
   </div>
 </template>

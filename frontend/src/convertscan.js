@@ -7,6 +7,8 @@
 import { api, errText } from './api'
 import { patiently } from './jobfollow'
 import { store, setBusy } from './store'
+import { t } from './i18n'
+import { ts } from './serverstrings.js'
 
 const POLL_MS = 600
 
@@ -29,11 +31,11 @@ async function loop(jobId) {
       const j = await patiently(() => api(`/api/convert/job/${jobId}`))
       if (!mine()) return
       s.progress = j.progress || ''
-      setBusy(j.progress ? '轉檔掃描：' + j.progress : '')
+      setBusy(j.progress ? t('轉檔掃描：') + ts(j.progress) : '')
       if (j.status === 'running') continue
-      if (j.status === 'error') throw { detail: j.error || '執行失敗' }
+      if (j.status === 'error') throw { detail: j.error || t('執行失敗') }
       // anything else is finished — 'cancelled' included (see ConvertDialog)
-      if (j.result == null) throw { detail: `工作結束但沒有結果（${j.status}）` }
+      if (j.result == null) throw { detail: t('工作結束但沒有結果（{status}）', { status: j.status }) }
       s.result = j.result
       return
     }

@@ -15,6 +15,8 @@
 // with a watermark burned in is routinely 2-3x the bytes of the clean one —
 // that tie-breaker alone picked the watermarked copy in 42 of 52 groups.
 
+import { t, N_ } from './i18n.js'
+
 export const CLEAN_MAX = 0.001      // same as backend watermark.CLEAN_MAX
 export const SMALLER_RATIO = 0.7    // "smaller" must be clearly smaller
 
@@ -32,6 +34,7 @@ function narrow(c, pick) {
   return pick.length && pick.length < c.length ? pick : c
 }
 
+// `why` is a key: shown through t()
 export function suggestKeeper(files) {
   let c = files.filter(f => !f.deleted)
   if (c.length < 2) return { keeper: c[0] || null, certain: true, why: '' }
@@ -39,20 +42,20 @@ export function suggestKeeper(files) {
 
   const top = Math.max(...c.map(e => locPrio(e.label)))
   c = c.filter(e => locPrio(e.label) === top)
-  let r = done('位置'); if (r) return r
+  let r = done(N_('位置')); if (r) return r
 
   // clean beats marked — only when something here was actually measured as
   // marked; a group where nothing could be told skips the step
   if (c.some(f => known(f) && !isClean(f))) {
     c = narrow(c, c.filter(isClean))
-    r = done('無浮水印'); if (r) return r
+    r = done(N_('無浮水印')); if (r) return r
   }
 
   // biggest picture wins — a re-saved copy is almost always the smaller one
   const px = e => (e.width || 0) * (e.height || 0)
   const maxPx = Math.max(...c.map(px))
   if (maxPx > 0) c = narrow(c, c.filter(e => px(e) === maxPx))
-  r = done('像素較多'); if (r) return r
+  r = done(N_('像素較多')); if (r) return r
 
   // smaller watermark — every remaining copy must be measured and marked
   if (c.every(f => known(f) && !isClean(f))) {
@@ -60,18 +63,18 @@ export function suggestKeeper(files) {
     const rest = c.filter(f => f.wm > lo)
     if (rest.length && lo < SMALLER_RATIO * Math.min(...rest.map(f => f.wm))) {
       c = c.filter(f => f.wm === lo)
-      r = done('浮水印較小'); if (r) return r
+      r = done(N_('浮水印較小')); if (r) return r
     }
   }
 
   // same pixels, so prefer the one that spent more bytes on them
   const maxBytes = Math.max(...c.map(e => e.size || 0))
   c = narrow(c, c.filter(e => (e.size || 0) === maxBytes))
-  r = done('檔案較大'); if (r) return r
+  r = done(N_('檔案較大')); if (r) return r
 
   const minT = Math.min(...c.map(e => e.mtime || 0))
   c = narrow(c, c.filter(e => (e.mtime || 0) === minT))
-  r = done('較舊'); if (r) return r
+  r = done(N_('較舊')); if (r) return r
 
   return { keeper: null, certain: false, why: '' }
 }
@@ -79,7 +82,7 @@ export function suggestKeeper(files) {
 /** Card label for one file's watermark measurement, or '' if none. */
 export function wmLabel(f) {
   if (!known(f)) return ''
-  if (isClean(f)) return '無浮水印'
+  if (isClean(f)) return t('無浮水印')
   const pct = f.wm * 100
-  return `浮水印 ${pct < 0.1 ? '<0.1' : pct.toFixed(1)}%`
+  return t('浮水印 {pct}%', { pct: pct < 0.1 ? '<0.1' : pct.toFixed(1) })
 }

@@ -1,13 +1,14 @@
 <script setup>
 import { store } from '../store'
 import Icon from './Icon.vue'
+import { t } from '../i18n'
 </script>
 
 <template>
   <div class="statusbar">
     <span class="msg ib" :class="store.statusKind" :title="store.status">
       <Icon v-if="store.status" :name="store.statusKind === 'warn' ? 'warn' : 'check'" :size="13" />
-      {{ store.status || '就緒' }}
+      {{ store.status || t('就緒') }}
     </span>
 
     <span v-if="store.busyText" class="busy ib" :title="store.busyText">
@@ -17,7 +18,7 @@ import Icon from './Icon.vue'
     <span class="spacer"></span>
 
     <span v-if="store.archived.length" class="count">
-      本次已歸檔 <b>{{ store.archived.length }}</b> 部
+      {{ t('本次已歸檔 {n} 部', { n: store.archived.length }) }}
     </span>
   </div>
 </template>

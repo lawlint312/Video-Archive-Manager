@@ -5,6 +5,7 @@ import { screen } from '../mobile'
 import { imageUrl, imageThumbUrl, streamUrl } from '../api'
 import VideoPlayer from './VideoPlayer.vue'
 import Icon from './Icon.vue'
+import { t } from '../i18n'
 
 const props = defineProps({
   items: { type: Array, required: true },      // [{ path, is_video }]
@@ -419,8 +420,8 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- prev / next -->
-    <button class="nav left no-mobile" @click.stop="prev" title="上一個（←）"><Icon name="chevronLeft" :size="30" /></button>
-    <button class="nav right no-mobile" @click.stop="next" title="下一個（→）"><Icon name="chevronRight" :size="30" /></button>
+    <button class="nav left no-mobile" @click.stop="prev" :title="t('上一個（←）')"><Icon name="chevronLeft" :size="30" /></button>
+    <button class="nav right no-mobile" @click.stop="next" :title="t('下一個（→）')"><Icon name="chevronRight" :size="30" /></button>
 
     <!-- stage -->
     <div class="stage" @click.self="closeFromBackdrop" @wheel="onWheel"
@@ -441,18 +442,18 @@ onBeforeUnmount(() => {
              :src="imageUrl(current.path)" :style="imgStyle" draggable="false"
              @load="onImgLoad" @error="onImgError"
              @pointerdown.prevent="onDown" @dblclick="onDblClick" />
-        <div v-if="failed" class="loading err">無法載入這張照片</div>
-        <div v-else-if="!loaded" class="loading"><span class="spin"></span>載入原圖中…</div>
+        <div v-if="failed" class="loading err">{{ t('無法載入這張照片') }}</div>
+        <div v-else-if="!loaded" class="loading"><span class="spin"></span>{{ t('載入原圖中…') }}</div>
       </template>
     </div>
 
     <div class="hint">
-      <template v-if="narrow">{{ axis === 'x' ? '左右' : '上下' }}滑動換上下一個　·　雙指縮放、點兩下放大　·　點空白處關閉</template>
+      <template v-if="narrow">{{ axis === 'x' ? t('左右滑動換上下一個') : t('上下滑動換上下一個') }}　·　{{ t('雙指縮放、點兩下放大') }}　·　{{ t('點空白處關閉') }}</template>
       <template v-else-if="isVideo">
-        影片：← → 快轉／倒轉　·　<b>[</b> <b>]</b> 上下個媒體　·　Esc 關閉
+        {{ t('影片：← → 快轉／倒轉') }}　·　<b>[</b> <b>]</b> {{ t('上下個媒體') }}　·　Esc {{ t('關閉') }}
       </template>
       <template v-else>
-        ← → 上下張　·　滾輪縮放　·　雙擊 100%　·　拖曳移動　·　Esc 關閉
+        ← → {{ t('上下張') }}　·　{{ t('滾輪縮放') }}　·　{{ t('雙擊 100%') }}　·　{{ t('拖曳移動') }}　·　Esc {{ t('關閉') }}
       </template>
     </div>
   </div>

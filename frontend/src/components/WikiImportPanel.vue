@@ -27,6 +27,8 @@ import { setStatus, can } from '../store'
 import { sectionName } from '../wikisections'
 import { buildApplyBody } from '../wikiapply'
 import Icon from './Icon.vue'
+import { t, N_ } from '../i18n'
+import { ts } from '../serverstrings.js'
 
 const pages = ref([])          // preview results, one per uploaded file
 const busy = ref(false)
@@ -107,7 +109,7 @@ async function pick(e) {
     pages.value = d.pages
     pages.value.forEach((p, i) => { if (!p.error) initChoice(p, i) })
   } catch (e2) {
-    error.value = '讀取失敗：' + errText(e2)
+    error.value = t('讀取失敗：') + errText(e2)
   } finally {
     busy.value = false
     if (fileInput.value) fileInput.value.value = ''   // let the same file be re-picked
@@ -115,14 +117,16 @@ async function pick(e) {
 }
 
 // what each verdict means for the person holding both files (core/avbase.py)
+// keys: shown through t()
 const REL_KIND = {
-  original: '原片 → 擷取：有原片就不用收',
-  uncut: '完整收錄的總集編',
-  digest: '精選總集編：原片比較完整',
-  unknown: '缺發行日，無法判斷',
+  original: N_('原片 → 擷取：有原片就不用收'),
+  uncut: N_('完整收錄的總集編'),
+  digest: N_('精選總集編：原片比較完整'),
+  unknown: N_('缺發行日，無法判斷'),
 }
-const PROFILE_LABEL = { dob: '生日', height: '身高', measurements: '三圍',
-                        cup: '罩杯', birthplace: '出生地' }
+const PROFILE_LABEL = { dob: N_('生日'), height: N_('身高'), measurements: N_('三圍'),
+                        cup: N_('罩杯'), birthplace: N_('出生地') }
+const profLabel = k => PROFILE_LABEL[k] ? t(PROFILE_LABEL[k]) : k
 
 // The relations worth reading: the ones touching a file you have. A
 // compilation's links to other performers' films are stored all the same,
@@ -134,18 +138,19 @@ function relShown(p) {
 
 function profileText(profile) {
   return Object.entries(profile || {})
-    .map(([k, v]) => `${PROFILE_LABEL[k] || k} ${v}`).join('、')
+    .map(([k, v]) => `${profLabel(k)} ${v}`).join(t('、'))
 }
 
 function writtenText(w) {
   if (!w) return ''
-  const bits = [`作品目錄 ${w.catalog || 0} 部（庫裡的片名 ${w.titles}、發行日 ${w.released}）`,
-                `共演對照 ${w.cast}`, `收錄關係 ${w.relations}`]
-  if (w.aliases) bits.push(`藝名 ${w.aliases}（${(w.added_aliases || []).join('、')}）`)
+  const bits = [t('作品目錄 {n} 部（庫裡的片名 {titles}、發行日 {released}）',
+                  { n: w.catalog || 0, titles: w.titles, released: w.released }),
+                t('共演對照 {n}', { n: w.cast }), t('收錄關係 {n}', { n: w.relations })]
+  if (w.aliases) bits.push(t('藝名 {n}（{list}）', { n: w.aliases, list: (w.added_aliases || []).join(t('、')) }))
   if ((w.profile || []).length) {
-    bits.push(`個資 ${w.profile.map(k => PROFILE_LABEL[k] || k).join('、')}`)
+    bits.push(t('個資 {list}', { list: w.profile.map(profLabel).join(t('、')) }))
   }
-  return bits.join('、')
+  return bits.join(t('、'))
 }
 
 const titleCount = p => Object.keys(p.titles || {}).length
@@ -169,17 +174,17 @@ async function apply(p, i) {
     })
     applied.value = { ...applied.value, [i]: d }
     if (p.site === 'avbase.net') {
-      setStatus('AVBASE 匯入：' + writtenText(d.written), 'ok')
+      setStatus(t('AVBASE 匯入：') + writtenText(d.written), 'ok')
     } else if (p.site === 'iafd.com') {
       const w = d.written || {}
-      setStatus(`IAFD 匯入：個人資料 ${(w.profile || []).length} 欄` +
-                (w.file_released ? `、發行日 ${w.file_released} 筆` : ''), 'ok')
+      setStatus(t('IAFD 匯入：個人資料 {n} 欄', { n: (w.profile || []).length }) +
+                (w.file_released ? t('、發行日 {n} 筆', { n: w.file_released }) : ''), 'ok')
     } else {
-      setStatus(`WIKI 匯入：${d.titles} 個日文片名` +
-                (d.aliases ? `、${d.aliases} 個別名` : ''), 'ok')
+      setStatus(t('WIKI 匯入：{n} 個日文片名', { n: d.titles }) +
+                (d.aliases ? t('、{n} 個別名', { n: d.aliases }) : ''), 'ok')
     }
   } catch (e2) {
-    error.value = '寫入失敗：' + errText(e2)
+    error.value = t('寫入失敗：') + errText(e2)
   } finally { busy.value = false }
 }
 
@@ -200,7 +205,7 @@ async function fillPreview(p, i) {
     })
     fill.value = { ...fill.value, [i]: { preview: d } }
   } catch (e) {
-    fill.value = { ...fill.value, [i]: { error: '讀取失敗：' + errText(e) } }
+    fill.value = { ...fill.value, [i]: { error: t('讀取失敗：') + errText(e) } }
   }
 }
 
@@ -212,9 +217,9 @@ async function fillApply(i, undo = false) {
       method: 'POST', body: JSON.stringify({ items: fillItems(f.preview), undo }),
     })
     fill.value = { ...fill.value, [i]: { ...f, busy: false, done: undo ? null : d } }
-    setStatus(undo ? `共演：已復原 ${d.marks} 筆` : `共演：加入 ${d.marks} 筆（${d.videos} 部影片）`, 'ok')
+    setStatus(undo ? t('共演：已復原 {n} 筆', { n: d.marks }) : t('共演：加入 {n} 筆（{videos} 部影片）', { n: d.marks, videos: d.videos }), 'ok')
   } catch (e) {
-    fill.value = { ...fill.value, [i]: { ...f, busy: false, error: '寫入失敗：' + errText(e) } }
+    fill.value = { ...fill.value, [i]: { ...f, busy: false, error: t('寫入失敗：') + errText(e) } }
   }
 }
 
@@ -225,27 +230,26 @@ const anyChosen = computed(() =>
 <template>
   <div class="panel">
     <div class="intro">
-      把<b>演員頁面存成 HTML</b>（瀏覽器的「另存新檔 → 網頁，完整」）再丟進來，
-      可以一次選多個檔案。丟進來會自動辨識是哪個站：
-      <br><b>seesaawiki</b>（日本）→ 匯入藝名、番號的日文片名、發行日
-      <br><b>IAFD</b>（歐美）→ 匯入個人資料、以及比對得到的作品發行日
-      <br><b>AVBase</b>（日本，作品頁或演員頁）→ 片名、發行日、藝名、個資，以及<b>收錄關係</b>
-      （哪部片是從哪部剪出來的）。只補空的，不會蓋掉已有的資料
-      <br>兩邊的作品清單合成一份（角色影片頁的 ⓘ）；片名以 wiki 為準
+      {{ t('把') }}<b>{{ t('演員頁面存成 HTML') }}</b>{{ t('（瀏覽器的「另存新檔 → 網頁，完整」）再丟進來，可以一次選多個檔案。丟進來會自動辨識是哪個站：') }}
+      <br><b>seesaawiki</b>{{ t('（日本）→ 匯入藝名、番號的日文片名、發行日') }}
+      <br><b>IAFD</b>{{ t('（歐美）→ 匯入個人資料、以及比對得到的作品發行日') }}
+      <br><b>AVBase</b>{{ t('（日本，作品頁或演員頁）→ 片名、發行日、藝名、個資，以及') }}<b>{{ t('收錄關係') }}</b>
+      {{ t('（哪部片是從哪部剪出來的）。只補空的，不會蓋掉已有的資料') }}
+      <br>{{ t('兩邊的作品清單合成一份（角色影片頁的 ⓘ）；片名以 wiki 為準') }}
     </div>
 
     <label class="pickbtn">
       <input ref="fileInput" type="file" accept=".html,.htm" multiple
              :disabled="busy" @change="pick" />
-      <Icon name="package" :size="14" /> 選擇已存檔的演員頁面…
+      <Icon name="package" :size="14" /> {{ t('選擇已存檔的演員頁面…') }}
     </label>
 
-    <div v-if="busy" class="hint">處理中…</div>
+    <div v-if="busy" class="hint">{{ t('處理中…') }}</div>
     <div v-if="error" class="err">{{ error }}</div>
 
     <div v-for="(p, i) in pages" :key="p.file" class="page">
       <div v-if="p.error" class="err">
-        <b>{{ p.file }}</b> — {{ p.error }}
+        <b>{{ p.file }}</b> — {{ ts(p.error) }}
       </div>
       <!-- IAFD: same dialog, same preview-then-confirm flow, but it writes a
            bio and some release years and nothing else. Kept as its own block
@@ -254,54 +258,52 @@ const anyChosen = computed(() =>
       <template v-else-if="p.site === 'iafd.com'">
         <div class="phead">
           <span class="pname">{{ p.name }}</span>
-          <span class="pmeta">IAFD 收錄 {{ p.works }} 部</span>
+          <span class="pmeta">{{ t('IAFD 收錄 {n} 部', { n: p.works }) }}</span>
           <span class="spacer"></span>
           <span class="src ib">iafd.com</span>
         </div>
 
         <div class="row">
-          <span class="lab">對應角色</span>
+          <span class="lab">{{ t('對應角色') }}</span>
           <select v-model="choice[i].folder" :disabled="busy">
-            <option value="">（不寫入）</option>
+            <option value="">{{ t('（不寫入）') }}</option>
             <option v-for="m in p.matches" :key="m.name"
                     :value="(p.match_paths || {})[m.name] || ''">
-              {{ m.name }} — 作品對上 {{ m.score }} 部
+              {{ m.name }} — {{ t('作品對上 {n} 部', { n: m.score }) }}
             </option>
           </select>
         </div>
         <div v-if="!p.matches.length" class="warn ib">
           <Icon name="warn" :size="12" />
-          沒有任何資料夾的影片對得上這一頁的作品。IAFD 只收錄片商發行的作品，
-          社群媒體與自製內容它沒有 —— 也可能這一頁根本不是這個人。
+          {{ t('沒有任何資料夾的影片對得上這一頁的作品。IAFD 只收錄片商發行的作品，社群媒體與自製內容它沒有 —— 也可能這一頁根本不是這個人。') }}
         </div>
         <div v-else class="shared">
-          對上的作品：{{ bestMatch(p).shared.join('、') }}
+          {{ t('對上的作品：') }}{{ bestMatch(p).shared.join(t('、')) }}
         </div>
 
         <label class="row" v-if="Object.keys(p.profile || {}).length">
           <input type="checkbox" v-model="choice[i].profile" :disabled="busy" />
-          <span>寫入個人資料（{{ Object.keys(p.profile).join('、') }}）</span>
+          <span>{{ t('寫入個人資料（{list}）', { list: Object.keys(p.profile).map(profLabel).join(t('、')) }) }}</span>
         </label>
         <div v-if="Object.keys(p.profile_existing || {}).length" class="shared">
-          已經填過、不會被覆蓋：{{ Object.keys(p.profile_existing).join('、') }}
+          {{ t('已經填過、不會被覆蓋：') }}{{ Object.keys(p.profile_existing).map(profLabel).join(t('、')) }}
         </div>
         <div v-if="Object.keys(p.extra || {}).length" class="shared">
-          這一頁另外有
-          <b>{{ Object.keys(p.extra).join('、') }}</b>
-          —— 目前不寫入（個人資料的欄位是固定的白名單）
+          {{ t('這一頁另外有') }}
+          <b>{{ Object.keys(p.extra).join(t('、')) }}</b>
+          {{ t('—— 目前不寫入（個人資料的欄位是固定的白名單）') }}
         </div>
 
         <label class="row" v-if="(p.matched || []).length">
           <input type="checkbox" v-model="choice[i].released" :disabled="busy" />
-          <span>寫入發行日：{{ p.matched.length }} 個檔案
-            （資料夾共 {{ p.files_total }} 部）</span>
+          <span>{{ t('寫入發行日：{n} 個檔案（資料夾共 {total} 部）', { n: p.matched.length, total: p.files_total }) }}</span>
         </label>
         <div v-if="(p.matched || []).length" class="shared">
-          比對是用<b>片名</b>做的，不是番號 —— 分不出來的一律不配對。
-          另有 {{ p.unmatched_works }} 部作品在你的庫裡找不到對應檔案。
+          {{ t('比對是用') }}<b>{{ t('片名') }}</b>{{ t('做的，不是番號 —— 分不出來的一律不配對。') }}
+          {{ t('另有 {n} 部作品在你的庫裡找不到對應檔案。', { n: p.unmatched_works }) }}
         </div>
         <details v-if="(p.matched || []).length" class="mlist">
-          <summary>看比對結果（{{ p.matched.length }}）</summary>
+          <summary>{{ t('看比對結果（{n}）', { n: p.matched.length }) }}</summary>
           <div v-for="m in p.matched" :key="m.path" class="mrow">
             <span class="my">{{ m.year }}</span>
             <span class="mt">{{ m.title }}</span>
@@ -311,11 +313,10 @@ const anyChosen = computed(() =>
 
         <div class="prow">
           <button class="btn" :disabled="busy || applied[i]" @click="apply(p, i)">
-            {{ applied[i] ? '已寫入' : '寫入' }}</button>
+            {{ applied[i] ? t('已寫入') : t('寫入') }}</button>
           <span v-if="applied[i]" class="ok ib">
             <Icon name="check" :size="12" />
-            個人資料 {{ (applied[i].written?.profile || []).length }} 欄、
-            發行日 {{ applied[i].written?.file_released || 0 }} 筆
+            {{ t('個人資料 {n} 欄、發行日 {m} 筆', { n: (applied[i].written?.profile || []).length, m: applied[i].written?.file_released || 0 }) }}
           </span>
         </div>
       </template>
@@ -326,9 +327,9 @@ const anyChosen = computed(() =>
         <div class="phead">
           <span class="pname">{{ p.name }}</span>
           <span class="pmeta">{{ p.kind !== 'talent'
-            ? '作品頁：只含這一部與它的原片／衍生片'
-            : p.page ? `演員頁第 ${p.page} 頁 · 這頁 ${p.works.length} 部（共 ${p.total} 部）`
-                     : `演員頁 · ${p.works.length} 部（AVBase 上共 ${p.total} 部）` }}</span>
+            ? t('作品頁：只含這一部與它的原片／衍生片')
+            : p.page ? t('演員頁第 {page} 頁 · 這頁 {n} 部（共 {total} 部）', { page: p.page, n: p.works.length, total: p.total })
+                     : t('演員頁 · {n} 部（AVBase 上共 {total} 部）', { n: p.works.length, total: p.total }) }}</span>
           <span class="spacer"></span>
           <a v-if="p.url" :href="p.url" target="_blank" rel="noopener noreferrer"
              class="src ib"><Icon name="link" :size="11" /> AVBase</a>
@@ -336,20 +337,20 @@ const anyChosen = computed(() =>
 
         <template v-if="p.kind === 'talent'">
           <div class="row">
-            <span class="lab">對應角色</span>
+            <span class="lab">{{ t('對應角色') }}</span>
             <select v-model="choice[i].folder" :disabled="busy">
-              <option value="">（不寫入藝名、個資與收錄統計）</option>
+              <option value="">{{ t('（不寫入藝名、個資與收錄統計）') }}</option>
               <option v-for="m in p.matches" :key="m.path" :value="m.path">
-                {{ m.name }} — {{ m.score ? `番號重疊 ${m.score} 個` : '只有名字相符' }}
+                {{ m.name }} — {{ m.score ? t('番號重疊 {n} 個', { n: m.score }) : t('只有名字相符') }}
               </option>
             </select>
           </div>
           <div v-if="bestMatch(p) && !bestMatch(p).score" class="warn ib">
             <Icon name="warn" :size="12" />
-            這一頁的番號跟資料夾一個都對不上，只有名字相同 —— 請確認過再寫入藝名與個資。
+            {{ t('這一頁的番號跟資料夾一個都對不上，只有名字相同 —— 請確認過再寫入藝名與個資。') }}
           </div>
           <div v-else-if="!bestMatch(p)" class="warn ib">
-            <Icon name="warn" :size="12" /> 找不到對應的角色資料夾，藝名與個資會跳過。
+            <Icon name="warn" :size="12" /> {{ t('找不到對應的角色資料夾，藝名與個資會跳過。') }}
           </div>
         </template>
 
@@ -357,69 +358,68 @@ const anyChosen = computed(() =>
           <label class="chk">
             <input type="checkbox" v-model="choice[i].titles"
                    :disabled="busy || !catalogCount(p)" />
-            片名與發行日：<b>{{ catalogCount(p) }}</b> 部存進作品目錄
-            <span class="dim">（之後才下載的也會自動帶入）</span>
-            · 庫裡有的 <b>{{ titleCount(p) }}</b> 部會顯示日文片名、
-            <b>{{ Object.keys(p.released || {}).length }}</b> 部補上發行日
+            {{ t('片名與發行日：') }}<b>{{ catalogCount(p) }}</b> {{ t('部存進作品目錄') }}
+            <span class="dim">{{ t('（之後才下載的也會自動帶入）') }}</span>
+            · {{ t('庫裡有的') }} <b>{{ titleCount(p) }}</b> {{ t('部會顯示日文片名、') }}
+            <b>{{ Object.keys(p.released || {}).length }}</b> {{ t('部補上發行日') }}
             <span v-if="replacedCount(p)" class="dim">
-              · 其中 {{ replacedCount(p) }} 個原本顯示英文</span>
-            <div class="dim">手打的、已經有日文的（wiki、DMM）一律優先，這裡只補沒有日文的。</div>
+              · {{ t('其中 {n} 個原本顯示英文', { n: replacedCount(p) }) }}</span>
+            <div class="dim">{{ t('手打的、已經有日文的（wiki、DMM）一律優先，這裡只補沒有日文的。') }}</div>
           </label>
           <label class="chk">
             <input type="checkbox" v-model="choice[i].cast"
                    :disabled="busy || !Object.keys(p.cast || {}).length" />
-            共演者對照表 <b>{{ Object.keys(p.cast || {}).length }}</b> 部
-            <span class="dim">只建立「番號 → 演員」的對照，用來建議共演</span>
+            {{ t('共演者對照表') }} <b>{{ Object.keys(p.cast || {}).length }}</b> {{ t('部') }}
+            <span class="dim">{{ t('只建立「番號 → 演員」的對照，用來建議共演') }}</span>
           </label>
           <label v-if="p.kind === 'talent'" class="chk">
             <input type="checkbox" v-model="choice[i].aliases"
                    :disabled="busy || !choice[i].folder || !p.aliases.length" />
-            藝名 <b>{{ p.aliases.length }}</b> 個（只增不覆蓋）
-            <span class="dim">{{ p.aliases.join('、') }}</span>
+            {{ t('藝名') }} <b>{{ p.aliases.length }}</b> {{ t('個（只增不覆蓋）') }}
+            <span class="dim">{{ p.aliases.join(t('、')) }}</span>
           </label>
           <label v-if="p.kind === 'talent' && Object.keys(p.profile || {}).length" class="chk">
             <input type="checkbox" v-model="choice[i].profile"
                    :disabled="busy || !choice[i].folder" />
-            個資 <span class="dim">{{ profileText(p.profile) }}</span>
+            {{ t('個資') }} <span class="dim">{{ profileText(p.profile) }}</span>
           </label>
           <div v-if="Object.keys(p.profile_existing || {}).length" class="shared">
-            已經填過、不會被覆蓋：{{ Object.keys(p.profile_existing)
-              .map(k => PROFILE_LABEL[k] || k).join('、') }}
+            {{ t('已經填過、不會被覆蓋：') }}{{ Object.keys(p.profile_existing)
+              .map(profLabel).join(t('、')) }}
           </div>
           <label class="chk">
             <input type="checkbox" v-model="choice[i].relations"
                    :disabled="busy || !(p.relations || []).length" />
-            收錄關係 <b>{{ (p.relations || []).length }}</b> 筆
+            {{ t('收錄關係') }} <b>{{ (p.relations || []).length }}</b> {{ t('筆') }}
             <span v-if="p.rel_counts?.hers" class="dim">
-              · 兩部都有她出演的 {{ p.rel_counts.hers }} 筆，{{ p.rel_counts.hers_judged }} 筆判斷得出來</span>
+              · {{ t('兩部都有她出演的 {n} 筆，{m} 筆判斷得出來', { n: p.rel_counts.hers, m: p.rel_counts.hers_judged }) }}</span>
             <span v-if="p.rel_counts?.both" class="dim">
-              · 其中 {{ p.rel_counts.both }} 組兩部你都有<template
-                v-if="p.rel_counts.redundant">，{{ p.rel_counts.redundant }} 組可以只留原片</template></span>
+              · {{ t('其中 {n} 組兩部你都有', { n: p.rel_counts.both }) }}<template
+                v-if="p.rel_counts.redundant">{{ t('，{n} 組可以只留原片', { n: p.rel_counts.redundant }) }}</template></span>
           </label>
         </div>
 
         <details v-if="(p.relations || []).length" class="mlist">
-          <summary>看跟你的檔案有關的收錄關係（{{ relShown(p).length }}）</summary>
+          <summary>{{ t('看跟你的檔案有關的收錄關係（{n}）', { n: relShown(p).length }) }}</summary>
           <div v-for="r in relShown(p).slice(0, 300)" :key="r.parent + '>' + r.child" class="mrow rel">
             <span class="mt" :class="{ own: r.have_parent }">{{ r.parent }}</span>
-            <span class="my">{{ r.parent_date || '日期不明' }}</span>
+            <span class="my">{{ r.parent_date || t('日期不明') }}</span>
             <span class="arrow">⊃</span>
             <span class="mt" :class="{ own: r.have_child }">{{ r.child }}</span>
-            <span class="my">{{ r.child_date || '日期不明' }}</span>
-            <span class="kind" :class="r.kind">{{ REL_KIND[r.kind] }}</span>
+            <span class="my">{{ r.child_date || t('日期不明') }}</span>
+            <span class="kind" :class="r.kind">{{ REL_KIND[r.kind] ? t(REL_KIND[r.kind]) : r.kind }}</span>
           </div>
-          <div v-if="relShown(p).length > 300" class="dupnote">只列前 300 筆。</div>
-          <div class="dupnote">綠色＝你庫裡有的番號。「⊃」左邊的影片內容包含右邊。
-            其餘的關係（多半是總集編收錄的其他女優作品）一樣會存起來。</div>
+          <div v-if="relShown(p).length > 300" class="dupnote">{{ t('只列前 300 筆。') }}</div>
+          <div class="dupnote">{{ t('綠色＝你庫裡有的番號。「⊃」左邊的影片內容包含右邊。其餘的關係（多半是總集編收錄的其他女優作品）一樣會存起來。') }}</div>
         </details>
 
         <div v-if="applied[i]" class="done ib">
           <Icon name="check" :size="14" />
-          已寫入：{{ writtenText(applied[i].written) }}
+          {{ t('已寫入：') }}{{ writtenText(applied[i].written) }}
         </div>
         <div v-else class="actions">
           <button class="btn ib" :disabled="busy" @click="apply(p, i)">
-            <Icon name="check" :size="14" /> 寫入這一頁
+            <Icon name="check" :size="14" /> {{ t('寫入這一頁') }}
           </button>
         </div>
       </template>
@@ -427,36 +427,34 @@ const anyChosen = computed(() =>
       <template v-else>
         <div class="phead">
           <span class="pname">{{ p.name }}</span>
-          <span class="pmeta">wiki 收錄 {{ p.summary?.total ?? p.works }} 部
-            · {{ p.aliases.length }} 個藝名</span>
+          <span class="pmeta">{{ t('wiki 收錄 {n} 部', { n: p.summary?.total ?? p.works }) }}
+            · {{ t('{n} 個藝名', { n: p.aliases.length }) }}</span>
           <span class="spacer"></span>
           <a v-if="p.url" :href="p.url" target="_blank" rel="noopener noreferrer"
-             class="src ib"><Icon name="link" :size="11" /> 來源</a>
+             class="src ib"><Icon name="link" :size="11" /> {{ t('來源') }}</a>
         </div>
 
         <!-- Which character this is. Catalogue overlap is the evidence; a
              matching name on its own is how /api/javdb/seed went wrong. -->
         <div class="row">
-          <span class="lab">對應角色</span>
+          <span class="lab">{{ t('對應角色') }}</span>
           <select v-model="choice[i].folder" :disabled="busy">
-            <option value="">（不寫入別名）</option>
+            <option value="">{{ t('（不寫入別名）') }}</option>
             <option v-for="m in p.matches" :key="m.path" :value="m.path">
               {{ m.name }}
-              — {{ m.score ? `番號重疊 ${m.score} 個` : '只有名字相符' }}
+              — {{ m.score ? t('番號重疊 {n} 個', { n: m.score }) : t('只有名字相符') }}
             </option>
           </select>
         </div>
         <div v-if="bestMatch(p) && !bestMatch(p).score" class="warn ib">
           <Icon name="warn" :size="12" />
-          這一頁的番號跟資料夾一個都對不上。名字相同可能是同名、也可能是改藝名 ——
-          請自己確認過再寫入別名。
+          {{ t('這一頁的番號跟資料夾一個都對不上。名字相同可能是同名、也可能是改藝名 —— 請自己確認過再寫入別名。') }}
         </div>
         <div v-else-if="bestMatch(p)" class="shared">
-          對上的番號：{{ bestMatch(p).shared.join('、') }}
+          {{ t('對上的番號：') }}{{ bestMatch(p).shared.join(t('、')) }}
         </div>
         <div v-else class="warn ib">
-          <Icon name="warn" :size="12" /> 找不到對應的角色資料夾。
-          片名還是可以匯入（它跟角色無關），別名就跳過。
+          <Icon name="warn" :size="12" /> {{ t('找不到對應的角色資料夾。片名還是可以匯入（它跟角色無關），別名就跳過。') }}
         </div>
 
         <div v-if="p.summary?.sections?.length" class="secs">
@@ -464,7 +462,7 @@ const anyChosen = computed(() =>
             {{ sectionName(sec.name) }} <b>{{ sec.count }}</b>
           </span>
           <span v-if="p.summary.no_id" class="sec dimsec">
-            其中 {{ p.summary.no_id }} 部沒有番號
+            {{ t('其中 {n} 部沒有番號', { n: p.summary.no_id }) }}
           </span>
         </div>
 
@@ -472,42 +470,42 @@ const anyChosen = computed(() =>
           <label class="chk">
             <input type="checkbox" v-model="choice[i].titles"
                    :disabled="busy || !(titleCount(p) + catalogCount(p))" />
-            日文片名與發行日：庫裡有的 <b>{{ titleCount(p) }}</b> 個
+            {{ t('日文片名與發行日：庫裡有的') }} <b>{{ titleCount(p) }}</b> {{ t('個') }}
             <span v-if="titleCount(p) < catalogCount(p)" class="dim">
-              · 頁面上全部 {{ catalogCount(p) }} 部存進作品目錄，之後才下載的也會自動帶入</span>
+              · {{ t('頁面上全部 {n} 部存進作品目錄，之後才下載的也會自動帶入', { n: catalogCount(p) }) }}</span>
             <span v-if="replacedCount(p)" class="dim">
-              · 其中 {{ replacedCount(p) }} 個會取代現有的英文片名</span>
+              · {{ t('其中 {n} 個會取代現有的英文片名', { n: replacedCount(p) }) }}</span>
           </label>
           <label class="chk">
             <input type="checkbox" v-model="choice[i].aliases"
                    :disabled="busy || !choice[i].folder || !p.aliases.length" />
-            別名 <b>{{ p.aliases.length }}</b> 個（只增不覆蓋）
-            <span class="dim">{{ p.aliases.join('、') }}</span>
+            {{ t('別名') }} <b>{{ p.aliases.length }}</b> {{ t('個（只增不覆蓋）') }}
+            <span class="dim">{{ p.aliases.join(t('、')) }}</span>
           </label>
           <label class="chk">
             <input type="checkbox" v-model="choice[i].cast" :disabled="busy" />
-            共演者對照表
-            <span class="dim">只建立「番號 → 演員」的對照，不寫進任何人的別名</span>
+            {{ t('共演者對照表') }}
+            <span class="dim">{{ t('只建立「番號 → 演員」的對照，不寫進任何人的別名') }}</span>
           </label>
         </div>
 
         <div v-if="applied[i]" class="done ib">
           <Icon name="check" :size="14" />
-          已寫入：{{ applied[i].titles }} 個日文片名<template
-            v-if="applied[i].aliases">、{{ applied[i].aliases }} 個別名（{{
-            applied[i].added_aliases?.join('、') }}）</template><template
-            v-else-if="choice[i].aliases">、別名沒有新增（都已經有了）</template>
+          {{ t('已寫入：{n} 個日文片名', { n: applied[i].titles }) }}<template
+            v-if="applied[i].aliases">{{ t('、{n} 個別名（{list}）', { n: applied[i].aliases,
+            list: applied[i].added_aliases?.join(t('、')) }) }}</template><template
+            v-else-if="choice[i].aliases">{{ t('、別名沒有新增（都已經有了）') }}</template>
           <!-- Named, not just counted: "已經有了" and "被判斷成同一個名字"
                look the same from outside, and only the user can say whether
                the judgement was right. -->
           <div v-if="applied[i].duplicate_aliases?.length" class="dupnote">
-            已存在、沒有重複加入：{{ applied[i].duplicate_aliases.join('、') }}
-            <span class="dim">（舊字體與新字體視為同一個名字，例如 淺 ＝ 浅）</span>
+            {{ t('已存在、沒有重複加入：') }}{{ applied[i].duplicate_aliases.join(t('、')) }}
+            <span class="dim">{{ t('（舊字體與新字體視為同一個名字，例如 淺 ＝ 浅）') }}</span>
           </div>
         </div>
         <div v-else class="actions">
           <button class="btn ib" :disabled="busy" @click="apply(p, i)">
-            <Icon name="check" :size="14" /> 寫入這一頁
+            <Icon name="check" :size="14" /> {{ t('寫入這一頁') }}
           </button>
         </div>
       </template>
@@ -516,39 +514,38 @@ const anyChosen = computed(() =>
       <div v-if="applied[i] && p.site !== 'iafd.com' && can('edit_info')" class="fillbox">
         <template v-if="!fill[i] || (!fill[i].preview && !fill[i].busy)">
           <button class="btn ghost ib" :disabled="busy" @click="fillPreview(p, i)">
-            <Icon name="user" :size="13" /> 帶入共演：找出這一頁的片裡、有角色資料夾的共演者
+            <Icon name="user" :size="13" /> {{ t('帶入共演：找出這一頁的片裡、有角色資料夾的共演者') }}
           </button>
           <span v-if="fill[i]?.error" class="errtxt">{{ fill[i].error }}</span>
         </template>
-        <div v-else-if="fill[i].busy && !fill[i].preview" class="dim">找共演中…</div>
+        <div v-else-if="fill[i].busy && !fill[i].preview" class="dim">{{ t('找共演中…') }}</div>
         <template v-else>
           <div class="fillsum">
-            共演：這一頁的片你有 <b>{{ fill[i].preview.checked }}</b> 部，
-            其中 <b>{{ fill[i].preview.rows.length }}</b> 部可以加
-            <b>{{ fill[i].preview.marks }}</b> 筆共演
+            {{ t('共演：這一頁的片你有') }} <b>{{ fill[i].preview.checked }}</b> {{ t('部，其中') }}
+            <b>{{ fill[i].preview.rows.length }}</b> {{ t('部可以加') }}
+            <b>{{ fill[i].preview.marks }}</b> {{ t('筆共演') }}
           </div>
           <details v-if="fill[i].preview.rows.length" class="mlist">
-            <summary>看要加哪些（{{ fill[i].preview.rows.length }}）</summary>
+            <summary>{{ t('看要加哪些（{n}）', { n: fill[i].preview.rows.length }) }}</summary>
             <div v-for="r in fill[i].preview.rows" :key="r.video_id" class="mrow">
               <span class="my">{{ r.video_id }}</span>
               <span class="mt">{{ r.lead }} ＋ {{ r.add.map(a => a.name
-                + (a.matched !== a.name ? `（${a.matched}）` : '')).join('、') }}</span>
+                + (a.matched !== a.name ? `（${a.matched}）` : '')).join(t('、')) }}</span>
             </div>
           </details>
           <div v-if="fill[i].preview.unmatched_total" class="shared">
-            另有 {{ fill[i].preview.unmatched_total }} 位演員在你的庫裡沒有角色資料夾，不會寫入；
-            播放時共演欄下方的「演出」會列出他們，點一下就能只用名字加入。
-            <span class="dim">例：{{ fill[i].preview.unmatched.slice(0, 8)
-              .map(u => `${u.name}（${u.films}）`).join('、') }}</span>
+            {{ t('另有 {n} 位演員在你的庫裡沒有角色資料夾，不會寫入；播放時共演欄下方的「演出」會列出他們，點一下就能只用名字加入。', { n: fill[i].preview.unmatched_total }) }}
+            <span class="dim">{{ t('例：') }}{{ fill[i].preview.unmatched.slice(0, 8)
+              .map(u => `${u.name}（${u.films}）`).join(t('、')) }}</span>
           </div>
           <div v-if="fill[i].done" class="done ib">
             <Icon name="check" :size="14" />
-            已加入 {{ fill[i].done.marks }} 筆共演（{{ fill[i].done.videos }} 部影片）
-            <button class="btn ghost sm" :disabled="fill[i].busy" @click="fillApply(i, true)">復原</button>
+            {{ t('已加入 {n} 筆共演（{videos} 部影片）', { n: fill[i].done.marks, videos: fill[i].done.videos }) }}
+            <button class="btn ghost sm" :disabled="fill[i].busy" @click="fillApply(i, true)">{{ t('復原') }}</button>
           </div>
           <div v-else-if="fill[i].preview.marks" class="actions">
             <button class="btn ib" :disabled="fill[i].busy" @click="fillApply(i)">
-              <Icon name="check" :size="14" /> 加入 {{ fill[i].preview.marks }} 筆共演
+              <Icon name="check" :size="14" /> {{ t('加入 {n} 筆共演', { n: fill[i].preview.marks }) }}
             </button>
           </div>
           <span v-if="fill[i].error" class="errtxt">{{ fill[i].error }}</span>
@@ -557,7 +554,7 @@ const anyChosen = computed(() =>
     </div>
 
     <div v-if="pages.length && !anyChosen && !busy" class="hint">
-      全部處理完了。可以再選其他頁面。
+      {{ t('全部處理完了。可以再選其他頁面。') }}
     </div>
   </div>
 </template>

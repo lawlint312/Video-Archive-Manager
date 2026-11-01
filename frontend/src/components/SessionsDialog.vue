@@ -2,6 +2,8 @@
 import { ref, onMounted } from 'vue'
 import { api, errText } from '../api'
 import Icon from './Icon.vue'
+import { t } from '../i18n'
+import { ts } from '../serverstrings.js'
 
 const emit = defineEmits(['close'])
 
@@ -19,7 +21,7 @@ async function load() {
 }
 
 async function revoke(r) {
-  if (!confirm(`把「${r.device}（${r.ip}）」登出？`)) return
+  if (!confirm(t('把「{device}（{ip}）」登出？', { device: ts(r.device), ip: r.ip }))) return
   busy.value = r.id
   error.value = ''
   try {
@@ -33,9 +35,9 @@ function when(iso) {
   const d = new Date(iso)
   if (isNaN(d)) return iso
   const mins = Math.round((Date.now() - d) / 60000)
-  if (mins < 2) return '剛剛'
-  if (mins < 60) return `${mins} 分鐘前`
-  if (mins < 60 * 24) return `${Math.round(mins / 60)} 小時前`
+  if (mins < 2) return t('剛剛')
+  if (mins < 60) return t('{n} 分鐘前', { n: mins })
+  if (mins < 60 * 24) return t('{n} 小時前', { n: Math.round(mins / 60) })
   const p = n => String(n).padStart(2, '0')
   return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
@@ -47,34 +49,33 @@ onMounted(load)
   <div class="modal" @click.self="emit('close')">
     <div class="dlg">
       <div class="dhead">
-        <span class="ib"><Icon name="gauge" :size="15" /> 登入中的裝置</span>
+        <span class="ib"><Icon name="gauge" :size="15" /> {{ t('登入中的裝置') }}</span>
         <span class="spacer"></span>
         <button class="btn ghost ib" @click="emit('close')">
-          <Icon name="close" :size="14" /> 關閉
+          <Icon name="close" :size="14" /> {{ t('關閉') }}
         </button>
       </div>
 
       <p class="intro">
-        這個帳號目前有效的登入。手機弄丟時把那一筆登出就好，
-        不必改密碼，其他裝置也不會受影響。
+        {{ t('這個帳號目前有效的登入。手機弄丟時把那一筆登出就好，不必改密碼，其他裝置也不會受影響。') }}
       </p>
 
-      <div v-if="loading" class="dim">讀取中…</div>
-      <div v-else-if="!rows.length" class="dim">沒有其他登入。</div>
+      <div v-if="loading" class="dim">{{ t('讀取中…') }}</div>
+      <div v-else-if="!rows.length" class="dim">{{ t('沒有其他登入。') }}</div>
       <div v-else class="list">
         <div v-for="r in rows" :key="r.id" class="row" :class="{ me: r.current }">
           <div class="who">
-            <b>{{ r.device }}</b>
-            <span v-if="r.current" class="tag">這台</span>
-            <div class="sub">{{ r.ip }} · 最後使用 {{ when(r.last_seen) }}</div>
+            <b>{{ ts(r.device) }}</b>
+            <span v-if="r.current" class="tag">{{ t('這台') }}</span>
+            <div class="sub">{{ r.ip }} · {{ t('最後使用 {time}', { time: when(r.last_seen) }) }}</div>
           </div>
           <button v-if="!r.current" class="btn ghost small"
-                  :disabled="busy === r.id" @click="revoke(r)">登出</button>
+                  :disabled="busy === r.id" @click="revoke(r)">{{ t('登出') }}</button>
         </div>
       </div>
       <div v-if="error" class="err">{{ error }}</div>
       <div class="note">
-        登入有效期是 7 天，過期會自動消失。改密碼則會一次登出所有裝置。
+        {{ t('登入有效期是 7 天，過期會自動消失。改密碼則會一次登出所有裝置。') }}
       </div>
     </div>
   </div>

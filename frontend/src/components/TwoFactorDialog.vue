@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { api, errText } from '../api'
 import Icon from './Icon.vue'
+import { t } from '../i18n'
 
 const props = defineProps({
   // Set when the account's role requires two-factor and it has none yet: the
@@ -90,63 +91,62 @@ onMounted(load)
   <div class="modal" @click.self="props.forced || emit('close')">
     <div class="dlg">
       <div class="dhead">
-        <span class="ib"><Icon name="check" :size="15" /> 兩步驟驗證</span>
+        <span class="ib"><Icon name="check" :size="15" /> {{ t('兩步驟驗證') }}</span>
         <span class="spacer"></span>
         <button v-if="!props.forced" class="btn ghost ib" @click="emit('close')">
-          <Icon name="close" :size="14" /> 關閉
+          <Icon name="close" :size="14" /> {{ t('關閉') }}
         </button>
       </div>
 
       <div v-if="props.forced && state !== 'codes'" class="forced">
-        這個帳號有編輯權限（所屬權限組勾了至少一項功能），所以必須開啟兩步驟驗證才能繼續使用。
+        {{ t('這個帳號有編輯權限（所屬權限組勾了至少一項功能），所以必須開啟兩步驟驗證才能繼續使用。') }}
       </div>
 
-      <div v-if="state === 'loading'" class="dim">讀取中…</div>
+      <div v-if="state === 'loading'" class="dim">{{ t('讀取中…') }}</div>
 
       <!-- current state -->
       <template v-else-if="state === 'status'">
         <p class="intro">
-          登入時除了密碼，還要輸入驗證 App 上的 6 位數字。
-          這樣就算密碼外洩，別人也登不進來。
+          {{ t('登入時除了密碼，還要輸入驗證 App 上的 6 位數字。這樣就算密碼外洩，別人也登不進來。') }}
         </p>
         <div class="row">
-          狀態：<b :class="info.enabled ? 'on' : 'off'">
-            {{ info.enabled ? '已啟用' : '尚未啟用' }}</b>
-          <span v-if="info.enabled" class="dim">· 備用碼還剩 {{ info.recovery_left }} 組</span>
+          {{ t('狀態：') }}<b :class="info.enabled ? 'on' : 'off'">
+            {{ info.enabled ? t('已啟用') : t('尚未啟用') }}</b>
+          <span v-if="info.enabled" class="dim">· {{ t('備用碼還剩 {n} 組', { n: info.recovery_left }) }}</span>
         </div>
 
         <template v-if="!info.enabled">
-          <label class="lab">輸入目前的密碼開始設定</label>
+          <label class="lab">{{ t('輸入目前的密碼開始設定') }}</label>
           <input v-model="password" type="password" autocomplete="current-password"
                  name="vam-2fa-password" @keyup.enter="startSetup" />
           <div class="foot">
             <span class="spacer"></span>
-            <button v-if="props.forced" class="btn ghost" @click="emit('logout')">登出</button>
+            <button v-if="props.forced" class="btn ghost" @click="emit('logout')">{{ t('登出') }}</button>
             <button class="btn" :disabled="busy || !password" @click="startSetup">
-              開始設定</button>
+              {{ t('開始設定') }}</button>
           </div>
         </template>
 
         <template v-else>
           <div class="note">
-            關掉或重新產生備用碼都要再輸入一次密碼與驗證碼。
+            {{ t('關掉或重新產生備用碼都要再輸入一次密碼與驗證碼。') }}
             <template v-if="info.required">
-              這個帳號的權限<b>必須</b>保持啟用，只能重新產生備用碼。
+              {{ t('這個帳號的權限') }}<b>{{ t('必須') }}</b>{{ t('保持啟用，只能重新產生備用碼。') }}
             </template>
           </div>
-          <label class="lab">目前的密碼</label>
+          <label class="lab">{{ t('目前的密碼') }}</label>
           <input v-model="password" type="password" autocomplete="current-password"
                  name="vam-2fa-password" />
-          <label class="lab">驗證 App 上的 6 位數字</label>
+          <label class="lab">{{ t('驗證 App 上的 6 位數字') }}</label>
           <input v-model="code" inputmode="numeric" autocomplete="one-time-code"
                  maxlength="6" placeholder="000000" />
           <div class="foot">
             <button class="btn ghost" :disabled="busy || !password" @click="newCodes">
-              重新產生備用碼</button>
+              {{ t('重新產生備用碼') }}</button>
             <span class="spacer"></span>
             <button v-if="!info.required" class="btn ghost danger"
                     :disabled="busy || !password || !code" @click="disable">
-              關閉兩步驟驗證</button>
+              {{ t('關閉兩步驟驗證') }}</button>
           </div>
         </template>
       </template>
@@ -154,43 +154,41 @@ onMounted(load)
       <!-- scan the QR -->
       <template v-else-if="state === 'setup'">
         <p class="intro">
-          用 Google Authenticator、Microsoft Authenticator 或 1Password 掃描這個 QR code，
-          再輸入它顯示的 6 位數字。
+          {{ t('用 Google Authenticator、Microsoft Authenticator 或 1Password 掃描這個 QR code，再輸入它顯示的 6 位數字。') }}
         </p>
         <div class="qr" v-if="svg" v-html="svg"></div>
         <div class="manual">
-          掃不到的話，在 App 裡選「手動輸入設定金鑰」並輸入：
+          {{ t('掃不到的話，在 App 裡選「手動輸入設定金鑰」並輸入：') }}
           <code>{{ secret }}</code>
         </div>
-        <label class="lab">App 顯示的 6 位數字</label>
+        <label class="lab">{{ t('App 顯示的 6 位數字') }}</label>
         <input v-model="code" inputmode="numeric" autocomplete="one-time-code"
                maxlength="6" placeholder="000000" @keyup.enter="enable" />
         <div v-if="error" class="err">{{ error }}</div>
         <div class="foot">
-          <button class="btn ghost" :disabled="busy" @click="state = 'status'">上一步</button>
+          <button class="btn ghost" :disabled="busy" @click="state = 'status'">{{ t('上一步') }}</button>
           <span class="spacer"></span>
           <button class="btn" :disabled="busy || code.length < 6" @click="enable">
-            啟用</button>
+            {{ t('啟用') }}</button>
         </div>
       </template>
 
       <!-- recovery codes, shown exactly once -->
       <template v-else-if="state === 'codes'">
         <div class="forced">
-          <b>請把這 10 組備用碼抄下來或存進密碼管理員。</b>
-          手機遺失時，它們是你唯一的入口，而且<b>這一頁關掉就再也看不到</b>。
-          每組只能用一次。
+          <b>{{ t('請把這 10 組備用碼抄下來或存進密碼管理員。') }}</b>
+          {{ t('手機遺失時，它們是你唯一的入口，而且') }}<b>{{ t('這一頁關掉就再也看不到') }}</b>{{ t('。每組只能用一次。') }}
         </div>
         <div class="codes">
           <code v-for="c in codes" :key="c">{{ c }}</code>
         </div>
         <label class="chk">
-          <input type="checkbox" v-model="saved" /> 我已經把備用碼保存好了
+          <input type="checkbox" v-model="saved" /> {{ t('我已經把備用碼保存好了') }}
         </label>
         <div class="foot">
-          <button class="btn ghost" @click="copyCodes">複製</button>
+          <button class="btn ghost" @click="copyCodes">{{ t('複製') }}</button>
           <span class="spacer"></span>
-          <button class="btn" :disabled="!saved" @click="finish">完成</button>
+          <button class="btn" :disabled="!saved" @click="finish">{{ t('完成') }}</button>
         </div>
       </template>
 

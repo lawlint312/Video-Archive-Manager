@@ -1,5 +1,6 @@
 import { onMounted, onBeforeUnmount, nextTick, ref } from 'vue'
 import { store } from './store'
+import { t } from './i18n'
 
 /**
  * Close the player before the file it is showing gets deleted.
@@ -79,8 +80,8 @@ export function usePlayerHotkeys(getVideo, onClose) {
     if (!v) return
 
     // don't hijack typing in inputs
-    const t = e.target
-    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+    const el = e.target
+    if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return
     if (e.ctrlKey || e.altKey || e.metaKey) return
 
     const step = store.seekSeconds || 10
@@ -90,7 +91,7 @@ export function usePlayerHotkeys(getVideo, onClose) {
       case ' ':
       case 'k': case 'K':
         v.paused ? v.play() : v.pause()
-        flash(v.paused ? '⏸ 暫停' : '▶ 播放')
+        flash(v.paused ? '⏸ ' + t('暫停') : '▶ ' + t('播放'))
         break
       case 'ArrowRight': seekBy(v, step); break
       case 'ArrowLeft':  seekBy(v, -step); break
@@ -104,13 +105,13 @@ export function usePlayerHotkeys(getVideo, onClose) {
         flash(`🔊 ${Math.round(v.volume * 100)}%`); break
       case 'm': case 'M':
         v.muted = !v.muted
-        flash(v.muted ? '🔇 靜音' : '🔊 取消靜音'); break
+        flash(v.muted ? '🔇 ' + t('靜音') : '🔊 ' + t('取消靜音')); break
       case 'f': case 'F':
         if (document.fullscreenElement) document.exitFullscreen()
         else v.requestFullscreen?.()
         break
-      case 'Home': v.currentTime = 0; flash('⏮ 開頭'); break
-      case 'End':  v.currentTime = v.duration || 0; flash('⏭ 結尾'); break
+      case 'Home': v.currentTime = 0; flash('⏮ ' + t('開頭')); break
+      case 'End':  v.currentTime = v.duration || 0; flash('⏭ ' + t('結尾')); break
       case '<': case ',':
         v.playbackRate = Math.max(0.25, v.playbackRate - 0.25)
         flash(`⏯ ${v.playbackRate}×`); break

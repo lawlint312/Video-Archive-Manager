@@ -17,6 +17,8 @@ import { api, errText } from '../api'
 import { setStatus, setBusy } from '../store'
 import CharPicker from './CharPicker.vue'
 import Icon from './Icon.vue'
+import { t, N_ } from '../i18n'
+import { ts } from '../serverstrings.js'
 
 const emit = defineEmits(['close'])
 
@@ -39,16 +41,16 @@ const showNoCover = ref(false)
 const found = computed(() => result.value?.found || [])
 // where the shown title came from: DMM just now, one already Japanese
 // (wiki / NFO / DMM before), hand-typed, or javdatabase's English
-const SOURCE = { dmm: 'DMM 日文', ja: '日文', manual: '手打', en: '英文' }
+const SOURCE = { dmm: N_('DMM 日文'), ja: N_('日文'), manual: N_('手打'), en: N_('英文') }
 const missing = computed(() => result.value?.missing || [])
 
 async function scan() {
-  if (!selected.value.length) { error.value = '請至少選擇一位角色'; return }
+  if (!selected.value.length) { error.value = t('請至少選擇一位角色'); return }
   error.value = ''
   scanning.value = true
   result.value = null
   pickerOpen.value = false
-  setBusy('JAV片名查詢：啟動中…')
+  setBusy(t('JAV片名查詢：啟動中…'))
   try {
     const { job_id } = await api('/api/movietitle/scan', {
       method: 'POST',
@@ -58,19 +60,19 @@ async function scan() {
       await new Promise(r => setTimeout(r, 700))
       const j = await api(`/api/dedup/job/${job_id}`)
       progress.value = j.progress || ''
-      if (j.progress) setBusy('JAV片名查詢：' + j.progress)
+      if (j.progress) setBusy(t('JAV片名查詢：') + j.progress)
       if (j.status === 'done') {
         result.value = j.result
-        setStatus(`片名查詢完成：${j.result.found.length} / ${j.result.total} 部`
-                  + (j.result.dmm_new ? `（DMM 日文 ${j.result.dmm_new} 部）` : '')
-                  + (j.result.covers ? `，新封面 ${j.result.covers.new.length} 部` : ''),
+        setStatus(t('片名查詢完成：{found} / {total} 部', { found: j.result.found.length, total: j.result.total })
+                  + (j.result.dmm_new ? t('（DMM 日文 {n} 部）', { n: j.result.dmm_new }) : '')
+                  + (j.result.covers ? t('，新封面 {n} 部', { n: j.result.covers.new.length }) : ''),
                   j.result.found.length ? 'ok' : 'warn')
         break
       }
-      if (j.status === 'error') { error.value = j.error || '查詢失敗'; break }
+      if (j.status === 'error') { error.value = ts(j.error) || t('查詢失敗'); break }
     }
   } catch (e) {
-    error.value = '查詢失敗：' + errText(e)
+    error.value = t('查詢失敗：') + errText(e)
   } finally {
     scanning.value = false
     progress.value = ''
@@ -90,8 +92,8 @@ async function scan() {
            arrangement the convert dialog uses. -->
       <button v-if="!pickerOpen" class="scopebar" @click="pickerOpen = true">
         <Icon name="chevronRight" :size="13" />
-        範圍：已選 {{ selected.length }} 位角色
-        <span class="chg">重新選擇</span>
+        {{ t('範圍：已選 {n} 位角色', { n: selected.length }) }}
+        <span class="chg">{{ t('重新選擇') }}</span>
       </button>
 
       <!-- `v-if`, not `v-show`: CharPicker fetches each character's
@@ -103,22 +105,21 @@ async function scan() {
                     @update:selected="v => selected = v" />
         <div class="row">
           <button class="btn" :disabled="scanning || !selected.length" @click="scan">
-            <Icon name="search" :size="14" /> 開始查詢
+            <Icon name="search" :size="14" /> {{ t('開始查詢') }}
           </button>
-          <label class="covers" title="存在影片旁邊：番號-poster.jpg 是直式的正面、番號-fanart.jpg 是橫式的整張封套。卡片依分類的比例選用。已經有的不下載、不覆蓋">
+          <label class="covers" :title="t('存在影片旁邊：番號-poster.jpg 是直式的正面、番號-fanart.jpg 是橫式的整張封套。卡片依分類的比例選用。已經有的不下載、不覆蓋')">
             <input type="checkbox" v-model="covers" :disabled="scanning" />
-            同時下載封面（直式 poster、橫式 fanart）
+            {{ t('同時下載封面（直式 poster、橫式 fanart）') }}
           </label>
           <span class="hint">
-            先查 <b>DMM</b> 的日文原名，查不到才用 javdatabase 的英文。<b>查到直接套用</b>；
-            你手打的片名不會被蓋掉，已有日文的不再查。
+            {{ t('先查') }} <b>DMM</b> {{ t('的日文原名，查不到才用 javdatabase 的英文。') }}<b>{{ t('查到直接套用') }}</b>{{ t('；你手打的片名不會被蓋掉，已有日文的不再查。') }}
           </span>
         </div>
       </div>
 
       <div v-if="scanning" class="prog">
-        <Icon name="spinner" :size="13" class="spin" /> {{ progress || '查詢中…' }}
-        <span class="hint">每個番號約 2～5 秒；可以關掉這個視窗，狀態列會繼續顯示進度</span>
+        <Icon name="spinner" :size="13" class="spin" /> {{ progress || t('查詢中…') }}
+        <span class="hint">{{ t('每個番號約 2～5 秒；可以關掉這個視窗，狀態列會繼續顯示進度') }}</span>
       </div>
       <div v-if="error" class="err">{{ error }}</div>
 
@@ -128,38 +129,38 @@ async function scan() {
            You are either setting up a run or reviewing the last one. -->
       <div v-if="result && !pickerOpen" class="results">
         <div class="bar">
-          共 {{ result.total }} 個番號 · <b>已套用 {{ found.length }}</b>
-          <span v-if="result.dmm_new"> · 其中 DMM 日文 <b>{{ result.dmm_new }}</b></span>
+          {{ t('共 {n} 個番號', { n: result.total }) }} · <b>{{ t('已套用 {n}', { n: found.length }) }}</b>
+          <span v-if="result.dmm_new"> · {{ t('其中 DMM 日文') }} <b>{{ result.dmm_new }}</b></span>
           <span v-if="missing.length">
-            · 查無片名 <b class="dim">{{ missing.length }}</b>
+            · {{ t('查無片名') }} <b class="dim">{{ missing.length }}</b>
             <button class="lnk" @click="showMissing = !showMissing">
-              {{ showMissing ? '收起' : '看清單' }}
+              {{ showMissing ? t('收起') : t('看清單') }}
             </button>
           </span>
         </div>
 
         <div v-if="result.covers" class="bar">
-          封面：<b>新下載 {{ result.covers.new.length }}</b>
+          {{ t('封面：') }}<b>{{ t('新下載 {n}', { n: result.covers.new.length }) }}</b>
           <span v-if="result.covers.javdatabase?.length"
-                title="DMM 商品目錄查不到的片：改用 javdatabase 頁面上的連結，從 DMM 舊圖庫或 MGS 圖庫下載">
-            （其中 {{ result.covers.javdatabase.length }} 部經 javdatabase 連結）</span>
-          · 已經有 {{ result.covers.had }}
+                :title="t('DMM 商品目錄查不到的片：改用 javdatabase 頁面上的連結，從 DMM 舊圖庫或 MGS 圖庫下載')">
+            {{ t('（其中 {n} 部經 javdatabase 連結）', { n: result.covers.javdatabase.length }) }}</span>
+          · {{ t('已經有 {n}', { n: result.covers.had }) }}
           <span v-if="result.covers.none.length">
-            · 找不到 <b class="dim">{{ result.covers.none.length }}</b>
+            · {{ t('找不到') }} <b class="dim">{{ result.covers.none.length }}</b>
             <button class="lnk" @click="showNoCover = !showNoCover">
-              {{ showNoCover ? '收起' : '看清單' }}
+              {{ showNoCover ? t('收起') : t('看清單') }}
             </button>
           </span>
           <span v-if="result.covers.failed.length">
-            · 失敗 <b class="warn">{{ result.covers.failed.length }}</b>
+            · {{ t('失敗') }} <b class="warn">{{ result.covers.failed.length }}</b>
           </span>
         </div>
         <div v-if="showNoCover && result.covers?.none.length" class="missing">
           <!-- what neither DMM nor javdatabase's links have: mostly MGS
                amateur (ARA, NTK) and uncensored numbers. mgstage.com itself
                refuses Taiwan, so these stay without a cover -->
-          <div class="hint">DMM 與 javdatabase 都沒有（多半是 MGS 素人系與無碼；MGS 網站不對台灣開放）：</div>
-          {{ result.covers.none.join('、') }}
+          <div class="hint">{{ t('DMM 與 javdatabase 都沒有（多半是 MGS 素人系與無碼；MGS 網站不對台灣開放）：') }}</div>
+          {{ result.covers.none.join(t('、')) }}
         </div>
         <div v-if="result.covers?.failed.length" class="missing">
           <div v-for="f in result.covers.failed" :key="f.id">{{ f.id }}：{{ f.error }}</div>
@@ -168,24 +169,24 @@ async function scan() {
         <div v-if="showMissing && missing.length" class="missing">
           <!-- about a fifth of catalogue numbers have no page at all, and FC2
                amateur numbers almost never do -->
-          {{ missing.map(m => m.id).join('、') }}
+          {{ missing.map(m => m.id).join(t('、')) }}
         </div>
 
         <!-- not fatal: javdatabase answered for the rest of the run -->
         <div v-if="result.dmm_error" class="dmmerr">
           <Icon name="warn" :size="12" />
-          這次連不上 DMM（{{ result.dmm_error }}），改用 javdatabase 的英文；之後再查一次就會補上日文。
+          {{ t('這次連不上 DMM（{error}），改用 javdatabase 的英文；之後再查一次就會補上日文。', { error: result.dmm_error }) }}
         </div>
 
         <div class="donehint">
           <Icon name="checked" :size="12" />
-          已寫入。要修改某一部的片名，播放那部影片時，在播放器下方的「片名」欄直接改（電腦版）。
+          {{ t('已寫入。要修改某一部的片名，播放那部影片時，在播放器下方的「片名」欄直接改（電腦版）。') }}
         </div>
 
         <div class="list">
           <div v-for="f in found" :key="f.id" class="row-item">
             <b>{{ f.id }}</b>
-            <span class="src" :class="f.source">{{ SOURCE[f.source] || '' }}</span>
+            <span class="src" :class="f.source">{{ SOURCE[f.source] ? t(SOURCE[f.source]) : '' }}</span>
             <span class="t">{{ f.title }}</span>
           </div>
         </div>

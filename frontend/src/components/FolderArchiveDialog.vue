@@ -3,6 +3,8 @@ import { ref, computed, onMounted } from 'vue'
 import { api, errText } from '../api'
 import { setStatus, setBusy } from '../store'
 import Icon from './Icon.vue'
+import { t } from '../i18n'
+import { ts } from '../serverstrings.js'
 
 const props = defineProps({ folder: { type: String, required: true } })
 const emit = defineEmits(['close', 'done'])
@@ -66,15 +68,16 @@ async function load() {
       ? okExisting[0].path
       : ([...roots.value].filter(fits).sort((a, b) => b.free - a.free)[0]?.path || '')
   } catch (e) {
-    error.value = '載入失敗：' + errText(e)
+    error.value = t('載入失敗：') + errText(e)
   } finally { loading.value = false }
 }
 
 async function run() {
-  if (!chosen.value) { alert('請選擇歸檔位置'); return }
+  if (!chosen.value) { alert(t('請選擇歸檔位置')); return }
   const name = person.value.trim()
-  if (!name) { alert('請輸入角色名稱'); return }
-  if (!confirm(`整包歸檔？\n\n${info.value.files} 個檔案（${fmt(info.value.bytes)}）\n→ ${chosen.value}\\${name}`)) return
+  if (!name) { alert(t('請輸入角色名稱')); return }
+  if (!confirm(t('整包歸檔？\n\n{n} 個檔案（{size}）\n→ {dest}',
+                 { n: info.value.files, size: fmt(info.value.bytes), dest: `${chosen.value}\\${name}` }))) return
 
   running.value = true
   try {
@@ -89,18 +92,19 @@ async function run() {
       const p = j.progress
       if (p && typeof p === 'object') {
         const pct = p.size ? Math.round(p.done / p.size * 100) : 0
-        setBusy(`整包歸檔 ${name} (${p.index}/${p.count}) ${p.name} ${pct}%`)
+        setBusy(t('整包歸檔 {person} ({i}/{n}) {name} {pct}%', { person: name, i: p.index, n: p.count, name: p.name, pct }))
       }
       if (j.status === 'done') {
-        setStatus(`整包歸檔完成「${name}」：搬移 ${j.result.moved}、略過重複 ${j.result.deleted}` +
-                  (j.result.failed ? `、失敗 ${j.result.failed}` : ''), 'ok')
+        setStatus(t('整包歸檔完成「{name}」：搬移 {moved}、略過重複 {skipped}',
+                    { name, moved: j.result.moved, skipped: j.result.deleted }) +
+                  (j.result.failed ? t('、失敗 {n}', { n: j.result.failed }) : ''), 'ok')
         emit('done', { person: name })
         break
       }
-      if (j.status === 'error') { setStatus('整包歸檔失敗：' + j.error, 'warn'); break }
+      if (j.status === 'error') { setStatus(t('整包歸檔失敗：') + ts(j.error), 'warn'); break }
     }
   } catch (e) {
-    setStatus('整包歸檔失敗：' + errText(e), 'warn')
+    setStatus(t('整包歸檔失敗：') + errText(e), 'warn')
   } finally { running.value = false; setBusy('') }
 }
 
@@ -111,46 +115,46 @@ onMounted(load)
   <div class="modal" @click.self="emit('close')">
     <div class="dlg">
       <div class="dhead">
-        <span class="ib"><Icon name="package" :size="16" /> 整包歸檔</span>
+        <span class="ib"><Icon name="package" :size="16" /> {{ t('整包歸檔') }}</span>
         <button class="btn ghost" @click="emit('close')"><Icon name="close" :size="14" /></button>
       </div>
 
-      <div v-if="loading" class="msg">分析中…</div>
+      <div v-if="loading" class="msg">{{ t('分析中…') }}</div>
       <div v-else-if="error" class="msg err">{{ error }}</div>
       <div v-else class="body">
-        <label class="lab">角色名稱</label>
-        <input v-model="person" placeholder="角色名稱" />
+        <label class="lab">{{ t('角色名稱') }}</label>
+        <input v-model="person" :placeholder="t('角色名稱')" />
         <div class="sub">
-          {{ info.videos }} 部影片 · 共 {{ info.files }} 個檔案 · {{ fmt(info.bytes) }}
-          　（子資料夾結構會保留）
+          {{ t('{n} 部影片', { n: info.videos }) }} · {{ t('共 {n} 個檔案', { n: info.files }) }} · {{ fmt(info.bytes) }}
+          　{{ t('（子資料夾結構會保留）') }}
         </div>
 
-        <label class="lab">歸檔到哪個根目錄</label>
+        <label class="lab">{{ t('歸檔到哪個根目錄') }}</label>
         <div class="roots">
           <label v-for="r in roots" :key="r.path" class="root"
                  :class="{ bad: !fits(r), on: chosen === r.path }">
             <input type="radio" :value="r.path" v-model="chosen" :disabled="!fits(r)" />
             <span class="rpath">{{ r.path }}</span>
-            <span class="rfree">剩餘 {{ fmt(r.free) }}</span>
-            <span v-if="existingRoots.has(r.path)" class="tag exist">已有此角色</span>
-            <span v-if="!fits(r)" class="tag full">空間不足</span>
+            <span class="rfree">{{ t('剩餘 {size}', { size: fmt(r.free) }) }}</span>
+            <span v-if="existingRoots.has(r.path)" class="tag exist">{{ t('已有此角色') }}</span>
+            <span v-if="!fits(r)" class="tag full">{{ t('空間不足') }}</span>
           </label>
         </div>
 
         <div v-if="mergingInto" class="hint ok">
-          將合併進已存在的「{{ person }}」資料夾（同內容檔案會略過，不會覆蓋）
+          {{ t('將合併進已存在的「{name}」資料夾（同內容檔案會略過，不會覆蓋）', { name: person }) }}
         </div>
         <div v-else-if="existingButFull" class="hint warn">
-          「{{ person }}」原本在 {{ existingButFull.path }}，但該碟空間不足<br />
-          → 將建立在 {{ chosen }}，之後側邊欄會顯示為跨碟合併群組，可用「整合資料夾」合併
+          {{ t('「{name}」原本在 {path}，但該碟空間不足', { name: person, path: existingButFull.path }) }}<br />
+          → {{ t('將建立在 {path}，之後側邊欄會顯示為跨碟合併群組，可用「整合資料夾」合併', { path: chosen }) }}
         </div>
       </div>
 
       <div class="foot">
         <button class="btn" :disabled="loading || running || !chosen" @click="run">
-          {{ running ? '歸檔中…' : '開始歸檔' }}
+          {{ running ? t('歸檔中…') : t('開始歸檔') }}
         </button>
-        <button class="btn ghost" @click="emit('close')">取消</button>
+        <button class="btn ghost" @click="emit('close')">{{ t('取消') }}</button>
       </div>
     </div>
   </div>

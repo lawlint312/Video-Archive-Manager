@@ -17,15 +17,17 @@ import MovieTitlePanel from './MovieTitlePanel.vue'
 import WikiImportPanel from './WikiImportPanel.vue'
 import NfoPanel from './NfoPanel.vue'
 import SideDialog from './SideDialog.vue'
+import { t } from '../i18n'
 
 const emit = defineEmits(['close'])
 
-const TABS = [
-  { key: 'profile', icon: 'user', label: '個資' },
-  { key: 'title', icon: 'film', label: '片名' },
-  { key: 'wiki', icon: 'package', label: 'WIKI 匯入' },
+// computed so the labels follow the language
+const TABS = computed(() => [
+  { key: 'profile', icon: 'user', label: t('個資') },
+  { key: 'title', icon: 'film', label: t('片名') },
+  { key: 'wiki', icon: 'package', label: t('WIKI 匯入') },
   { key: 'nfo', icon: 'note', label: 'NFO' },
-]
+])
 const tab = ref('profile')
 
 // Each panel reports whether it is mid-run; closing during a scan would
@@ -45,12 +47,12 @@ const busy = computed(() =>
        source is answering — the wiki gives original Japanese, javdatabase
        machine-translated English, and nobody should have to remember which
        page is which. -->
-  <SideDialog title="角色查詢" :items="TABS" v-model="tab"
+  <SideDialog :title="t('角色查詢')" :items="TABS" v-model="tab"
               :locked="busy" width="1100px" height="900px" :z="50"
-              :subtitle="tab === 'wiki' ? '來源：你存下來的 wiki 頁面'
-                         : tab === 'nfo' ? '影片旁的 .nfo（Kodi／Jellyfin／Emby）'
-                         : tab === 'title' ? '來源：DMM（日文）、javdatabase（英文）'
-                                        : '來源：javdatabase'"
+              :subtitle="tab === 'wiki' ? t('來源：你存下來的 wiki 頁面')
+                         : tab === 'nfo' ? t('影片旁的 .nfo（Kodi／Jellyfin／Emby）')
+                         : tab === 'title' ? t('來源：DMM（日文）、javdatabase（英文）')
+                                        : t('來源：{src}', { src: 'javdatabase' })"
               @close="emit('close')">
     <!-- Kept alive rather than re-created: switching pages mid-scan must not
          throw away a running job or a result list you have not acted on. -->

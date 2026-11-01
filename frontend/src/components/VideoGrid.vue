@@ -18,6 +18,7 @@ import Icon from './Icon.vue'
 import { screen } from '../mobile'
 import { loadVideoIndex } from '../videosearch'
 import { relVerb, relNote } from '../relinfo.js'
+import { t, N_ } from '../i18n'
 
 const props = defineProps({
   root: { type: String, default: null },    // character folder path
@@ -56,7 +57,7 @@ const costarVideos = ref([])
 // and 我的最愛, and it is not remembered: it is about this character.
 const ownerMode = ref('all')
 // Worded so they do not read as a second 「全部」 next to the FILTERS row.
-const OWNER_MODES = [['all', '含共演'], ['own', '只看自己'], ['costar', '只看共演']]
+const OWNER_MODES = [['all', N_('含共演')], ['own', N_('只看自己')], ['costar', N_('只看共演')]]
 const ownerBase = computed(() =>
   ownerMode.value === 'own' ? videos.value
     : ownerMode.value === 'costar' ? costarVideos.value
@@ -129,8 +130,8 @@ const NATURAL_DIR = { newest: 'desc', name: 'asc', size: 'desc',
 // 最近新增 is the file's mtime — when this copy arrived. 發行日 is when the
 // film came out, which for an archive of old releases is a different order
 // entirely. Only offered where anything has one.
-const ALL_SORTS = [['newest', '最近新增'], ['name', '名稱'], ['size', '大小'],
-                   ['released', '發行日']]
+const ALL_SORTS = [['newest', N_('最近新增')], ['name', N_('名稱')], ['size', N_('大小')],
+                   ['released', N_('發行日')]]
 const saved = (() => {
   try { return JSON.parse(localStorage.getItem(LS_SORT) || '{}') } catch { return {} }
 })()
@@ -174,8 +175,8 @@ function pickWiki(mode) {
 // Text for the chip, so it is never a mystery which of the panel's numbers is
 // currently applied.
 const WIKI_LABELS = {
-  'wiki:extra': '都沒收錄', 'wiki:dupe': '重複的檔案',
-  'wiki:none': '認不出番號',
+  'wiki:extra': N_('都沒收錄'), 'wiki:dupe': N_('重複的檔案'),
+  'wiki:none': N_('認不出番號'),
 }
 // the panel's sources, one merged list (core/catalog.py)
 const SOURCE_NAME = { wiki: 'seesaawiki', avbase: 'AVBase' }
@@ -183,7 +184,7 @@ const wikiLabel = computed(() => {
   const m = filterMode.value
   if (!isWikiMode(m)) return ''
   if (m.startsWith('wiki:sec:')) return sectionName(m.slice('wiki:sec:'.length))
-  return WIKI_LABELS[m] || m
+  return WIKI_LABELS[m] ? t(WIKI_LABELS[m]) : m
 })
 
 // A character change must drop it — the numbers belonged to the old one.
@@ -243,7 +244,7 @@ async function toggleFav(v) {
   try { await postFav(api, v.path, next) }
   catch (e) {
     applyMark(v.path, { fav: !next })
-    setStatus('最愛儲存失敗：' + errText(e), 'warn')
+    setStatus(t('最愛儲存失敗：') + errText(e), 'warn')
   }
 }
 
@@ -294,7 +295,7 @@ async function load() {
     wiki.value = d.wiki || null
     loadCostarList()
   } catch (e) {
-    error.value = '載入失敗：' + errText(e)
+    error.value = t('載入失敗：') + errText(e)
   } finally {
     loading.value = false
   }
@@ -416,7 +417,7 @@ async function saveTitle() {
     titleSaved.value = true
     setTimeout(() => { titleSaved.value = false }, 1500)
   } catch (e) {
-    setStatus('片名儲存失敗：' + errText(e), 'warn')
+    setStatus(t('片名儲存失敗：') + errText(e), 'warn')
   }
 }
 
@@ -524,7 +525,7 @@ async function saveCostars(list) {
     // a name-only co-star is searchable
     if (list.some(c => c.kind === 'name')) loadVideoIndex(true)
   } catch (e) {
-    setStatus('共演儲存失敗：' + errText(e), 'warn')
+    setStatus(t('共演儲存失敗：') + errText(e), 'warn')
   }
 }
 
@@ -591,11 +592,11 @@ async function addTyped() {
   if (!c) {
     // nobody's folder or alias: kept as a name, and linked up later by itself
     addName(n)
-    setStatus(`已加入「${n}」（沒有角色資料夾；之後建了資料夾或加成別名會自動接上）`, 'ok')
+    setStatus(t('已加入「{name}」（沒有角色資料夾；之後建了資料夾或加成別名會自動接上）', { name: n }), 'ok')
     return
   }
   if ((c.paths || [c.path]).some(f => isUnder(playing.value.path, f))) {
-    setStatus(`這部片本來就在「${c.name}」底下`, 'warn')
+    setStatus(t('這部片本來就在「{name}」底下', { name: c.name }), 'warn')
     return
   }
   addCostar({ folder: c.path, name: c.name })
@@ -621,7 +622,7 @@ async function doDelete(v) {
     // The admin path: this *is* the confirmation, so no second one follows.
     if (!confirm(favGuardMessage(v.name, guard))) return
     force = true
-  } else if (!confirm(`確定永久刪除？此操作無法復原。\n\n${v.name}\n${fmtSize(v.size)}`)) return
+  } else if (!confirm(t('確定永久刪除？此操作無法復原。') + `\n\n${v.name}\n${fmtSize(v.size)}`)) return
   try {
     // an open player holds the file, and Windows will not delete it then
     if (playing.value?.path === v.path) await releaseFile(close)
@@ -632,10 +633,10 @@ async function doDelete(v) {
       method: 'POST', body: JSON.stringify({ path: v.path, force_fav: force }),
     })
     remove(v.path)
-    setStatus(`已刪除 ${v.name}`, 'warn')
+    setStatus(t('已刪除 {name}', { name: v.name }), 'warn')
   } catch (e) {
-    setStatus('刪除失敗：' + errText(e), 'warn')
-    alert('刪除失敗：' + errText(e))
+    setStatus(t('刪除失敗：') + errText(e), 'warn')
+    alert(t('刪除失敗：') + errText(e))
   }
 }
 
@@ -679,8 +680,8 @@ function playRelated(r) {
 async function copyId(id) {
   try {
     await navigator.clipboard.writeText(id)
-    setStatus(`已複製番號 ${id}`, 'ok')
-  } catch { prompt('複製：', id) }
+    setStatus(t('已複製番號 {id}', { id }), 'ok')
+  } catch { prompt(t('複製：'), id) }
 }
 function close() { playing.value = null; playStart.value = 0; dropSub() }
 
@@ -826,55 +827,55 @@ watch(() => store.filesVersion, load)
   <div class="grid-wrap">
     <div class="count" :class="{ danger: store.deleteMode }">
       <span class="ib"><Icon name="film" :size="13" />
-        {{ videos.length + costarVideos.length }} 部影片<template
-          v-if="costarVideos.length">（含共演 {{ costarVideos.length }}）</template></span>
+        {{ t('{n} 部影片', { n: videos.length + costarVideos.length }) }}<template
+          v-if="costarVideos.length">{{ t('（含共演 {n}）', { n: costarVideos.length }) }}</template></span>
       <button v-if="wiki" class="wbtn" :class="{ on: wikiOpen }"
-              :title="`收錄 ${wiki.total} 部`"
+              :title="t('收錄 {n} 部', { n: wiki.total })"
               @click="wikiOpen = !wikiOpen"><Icon name="info" :size="13" /></button>
       <!-- not on a phone: the header's mode button already says 編輯模式, and
            here it pushed the sort buttons onto a third line -->
-      <span v-if="store.editMode" class="mode-tag no-mobile">編輯模式</span>
+      <span v-if="store.editMode" class="mode-tag no-mobile">{{ t('編輯模式') }}</span>
       <span v-if="store.deleteMode" class="del-tag ib">
-        <Icon name="warn" :size="12" /> 刪除模式 — 點垃圾桶會永久刪除</span>
+        <Icon name="warn" :size="12" /> {{ t('刪除模式 — 點垃圾桶會永久刪除') }}</span>
       <span v-if="store.clipMode" class="clip-tag ib no-mobile">
-        <Icon name="scissors" :size="12" /> 剪輯模式 — 點剪刀選取要保留的片段</span>
+        <Icon name="scissors" :size="12" /> {{ t('剪輯模式 — 點剪刀選取要保留的片段') }}</span>
       <span class="spacer"></span>
       <button v-if="canDelete" class="tbtn delbtn" :class="{ on: store.deleteMode }"
               @click="store.deleteMode = !store.deleteMode">
         <Icon name="trash" :size="12" />
-        {{ store.deleteMode ? '結束刪除' : '刪除模式' }}
+        {{ store.deleteMode ? t('結束刪除') : t('刪除模式') }}
       </button>
       <button v-if="canClip" class="tbtn clipbtn no-mobile" :class="{ on: store.clipMode }"
               @click="store.clipMode = !store.clipMode">
         <Icon name="scissors" :size="12" />
-        {{ store.clipMode ? '結束剪輯' : '剪輯模式' }}
+        {{ store.clipMode ? t('結束剪輯') : t('剪輯模式') }}
       </button>
       <!-- Kept out of the `videos.length > 1` block below on purpose: the
            filter is a mode you carry between folders, so it has to be visible
            (and clearable) even where it has left one video showing. The counts
            are what stop an empty result reading as a broken page. -->
       <span v-if="videos.length || costarVideos.length" class="tgroup fgroup">
-        <span class="slab no-mobile">顯示</span>
+        <span class="slab no-mobile">{{ t('顯示') }}</span>
         <button v-for="f in FILTERS" :key="f[0]" class="tbtn markbtn"
                 :class="{ on: filterMode === f[0], zero: !markCounts[f[0]] }"
-                :title="f[1]" @click="setFilter(f[0])">
+                :title="t(f[1])" @click="setFilter(f[0])">
           <!-- On a phone this group shares the line with the count, so the
                longest label becomes the heart the cards already use. -->
-          <template v-if="f[0] === 'fav'"><span class="no-mobile">{{ f[1] }}</span><Icon
+          <template v-if="f[0] === 'fav'"><span class="no-mobile">{{ t(f[1]) }}</span><Icon
             name="heart" :size="11" class="mobile-only" /></template>
-          <template v-else>{{ f[1] }}</template>
+          <template v-else>{{ t(f[1]) }}</template>
           <span class="mcnt">{{ markCounts[f[0]] }}</span>
         </button>
       </span>
       <!-- 共演: only where there are any. Narrows the mixed listing to this
            folder's own files or to the ones filed under other characters. -->
       <span v-if="costarVideos.length" class="tgroup ogroup">
-        <span class="slab no-mobile">來源</span>
+        <span class="slab no-mobile">{{ t('來源') }}</span>
         <button v-for="o in OWNER_MODES" :key="o[0]" class="tbtn markbtn"
                 :class="{ on: ownerMode === o[0] }"
-                :title="o[0] === 'costar' ? '這位角色出現在其他角色資料夾裡的影片' : o[1]"
+                :title="o[0] === 'costar' ? t('這位角色出現在其他角色資料夾裡的影片') : t(o[1])"
                 @click="ownerMode = o[0]">
-          {{ o[1] }}
+          {{ t(o[1]) }}
           <span class="mcnt">{{ o[0] === 'own' ? videos.length
                                 : o[0] === 'costar' ? costarVideos.length
                                 : videos.length + costarVideos.length }}</span>
@@ -888,11 +889,11 @@ watch(() => store.filesVersion, load)
         <Icon name="close" :size="11" />
       </button>
       <span v-if="ownerBase.length > 1" class="tgroup sgroup">
-        <span class="slab">排序</span>
+        <span class="slab">{{ t('排序') }}</span>
         <button v-for="s in SORTS"
                 :key="s[0]" class="tbtn ib" :class="{ on: sortBy === s[0] }"
                 @click="setSort(s[0])">
-          {{ s[1] }}
+          {{ t(s[1]) }}
           <Icon v-if="sortBy === s[0]" :name="sortDir === 'asc' ? 'up' : 'down'" :size="11" />
         </button>
       </span>
@@ -906,20 +907,20 @@ watch(() => store.filesVersion, load)
       <!-- One list from every imported page (seesaawiki, AVBase), merged by
            catalogue number — core/catalog.py. -->
       <div class="wh">
-        {{ wiki.page_name || '' }} — 收錄
+        {{ wiki.page_name || '' }} — {{ t('收錄') }}
         <template v-for="pg in (wiki.pages || [{ source: 'wiki', url: wiki.url }])"
                   :key="pg.source">
           <a v-if="pg.url" :href="pg.url" target="_blank"
              rel="noopener noreferrer" class="wsrc ib"
-             :title="pg.listed ? `這個來源列了 ${pg.listed} 部` : ''">
+             :title="pg.listed ? t('這個來源列了 {n} 部', { n: pg.listed }) : ''">
             <Icon name="link" :size="11" /> {{ SOURCE_NAME[pg.source] || pg.source }}</a>
           <span v-else class="wsrc">{{ SOURCE_NAME[pg.source] || pg.source }}</span>
         </template>
       </div>
       <table>
         <thead>
-          <tr class="hd"><th></th><th>收錄</th><th>尚未收入</th>
-            <th>資料夾</th></tr>
+          <tr class="hd"><th></th><th>{{ t('收錄') }}</th><th>{{ t('尚未收入') }}</th>
+            <th>{{ t('資料夾') }}</th></tr>
         </thead>
         <tbody>
         <tr v-for="sec in wiki.sections" :key="sec.name">
@@ -937,12 +938,12 @@ watch(() => store.filesVersion, load)
               >{{ sec.have }}</button></td>
         </tr>
         <tr class="tot">
-          <td>総計</td>
+          <td>{{ t('總計') }}</td>
           <td class="n">
             {{ wiki.total }}
             <!-- A subset of the total, not something to add to it, so it sits
                  against the number it qualifies rather than on its own row. -->
-            <span v-if="wiki.no_id" class="qual">（{{ wiki.no_id }} 部無番號）</span>
+            <span v-if="wiki.no_id" class="qual">{{ t('（{n} 部無番號）', { n: wiki.no_id }) }}</span>
           </td>
           <td class="n"><button class="num"
               :class="{ zero: wiki.total === wiki.have }"
@@ -957,35 +958,35 @@ watch(() => store.filesVersion, load)
              section, and 重複的檔案 is the one nobody thinks of -- two copies
              of one film are one work above but two rows in the grid. -->
         <tr class="gap"><td colspan="4"></td></tr>
-        <tr><td>都沒收錄</td><td class="n dash">—</td><td class="n dash">—</td>
+        <tr><td>{{ t('都沒收錄') }}</td><td class="n dash">—</td><td class="n dash">—</td>
             <td class="n"><button class="num" :class="{ zero: !wiki.extra }"
                 :disabled="!wiki.extra" @click="pickWiki('wiki:extra')"
                 >{{ wiki.extra }}</button></td></tr>
-        <tr><td>重複的檔案
+        <tr><td>{{ t('重複的檔案') }}
             <!-- The panel counts surplus copies; the filter shows every copy,
                  because choosing between them means seeing them together. -->
             <span v-if="wiki.dupe_files > wiki.dupes" class="qual"
-                  >點開看全部 {{ wiki.dupe_files }} 個</span></td>
+                  >{{ t('點開看全部 {n} 個', { n: wiki.dupe_files }) }}</span></td>
             <td class="n dash">—</td><td class="n dash">—</td>
             <td class="n"><button class="num" :class="{ zero: !wiki.dupes }"
                 :disabled="!wiki.dupes" @click="pickWiki('wiki:dupe')"
                 >{{ wiki.dupes }}</button></td></tr>
-        <tr><td>認不出番號</td><td class="n dash">—</td><td class="n dash">—</td>
+        <tr><td>{{ t('認不出番號') }}</td><td class="n dash">—</td><td class="n dash">—</td>
             <td class="n"><button class="num" :class="{ zero: !wiki.no_number }"
                 :disabled="!wiki.no_number" @click="pickWiki('wiki:none')"
                 >{{ wiki.no_number }}</button></td></tr>
         <tr class="tot">
-          <td>資料夾影片合計</td><td class="n dash">—</td><td class="n dash">—</td>
+          <td>{{ t('資料夾影片合計') }}</td><td class="n dash">—</td><td class="n dash">—</td>
           <td class="n">{{ wiki.files ?? videos.length }}</td>
         </tr>
         </tbody>
       </table>
       <div class="wn">
-        <span class="dim">「收錄」不等於「主演」—— 裡面包含總集編與多人企劃片。</span>
+        <span class="dim">{{ t('「收錄」不等於「主演」—— 裡面包含總集編與多人企劃片。') }}</span>
       </div>
     </div>
 
-    <div v-if="loading" class="msg">載入中…</div>
+    <div v-if="loading" class="msg">{{ t('載入中…') }}</div>
     <div v-else-if="error" class="msg err">{{ error }}</div>
 
     <!-- inbox: loose files first, then one section per subfolder -->
@@ -998,7 +999,7 @@ watch(() => store.filesVersion, load)
           <span v-if="selectMode" class="cbox"><Icon :name="isSel(v.path) ? 'checked' : 'unchecked'" :size="16" /></span>
           <div class="thumb"><img :src="thumbFor(v)" loading="lazy" />
               <div class="badges">
-                <button v-if="canSheet(v)" class="tb sheetbtn" title="縮圖表（多個時間點的畫面）"
+                <button v-if="canSheet(v)" class="tb sheetbtn" :title="t('縮圖表（多個時間點的畫面）')"
                         @click="e => openSheet(v, e)">
                   <Icon name="grid" :size="14" /></button>
               </div>
@@ -1023,10 +1024,10 @@ watch(() => store.filesVersion, load)
       <template v-for="[folder, items] in grouped.folders" :key="folder">
         <div class="fhdr">
           <span class="ftitle ib"><Icon name="folder" :size="14" /> {{ folder }} <span class="fcnt">({{ items.length }})</span></span>
-          <button v-if="selectMode" class="fbtn" @click="selectFolder(items)">全選此資料夾</button>
+          <button v-if="selectMode" class="fbtn" @click="selectFolder(items)">{{ t('全選此資料夾') }}</button>
           <button v-else-if="canArchive" class="fbtn ib"
                   @click="emit('archive-folder', folderPath(items))">
-            <Icon name="package" :size="13" /> 整包歸檔</button>
+            <Icon name="package" :size="13" /> {{ t('整包歸檔') }}</button>
         </div>
         <div class="grid" :style="gvars">
           <div v-for="v in items" :key="v.path" class="card"
@@ -1036,7 +1037,7 @@ watch(() => store.filesVersion, load)
             <span v-if="selectMode" class="cbox"><Icon :name="isSel(v.path) ? 'checked' : 'unchecked'" :size="16" /></span>
             <div class="thumb"><img :src="thumbFor(v)" loading="lazy" />
               <div class="badges">
-                <button v-if="canSheet(v)" class="tb sheetbtn" title="縮圖表（多個時間點的畫面）"
+                <button v-if="canSheet(v)" class="tb sheetbtn" :title="t('縮圖表（多個時間點的畫面）')"
                         @click="e => openSheet(v, e)">
                   <Icon name="grid" :size="14" /></button>
               </div>
@@ -1072,10 +1073,10 @@ watch(() => store.filesVersion, load)
                coordinates and the sheet button was hidden under the delete
                badge whenever delete mode was on -->
           <div class="badges">
-            <button v-if="canSheet(v)" class="tb sheetbtn" title="縮圖表（多個時間點的畫面）"
+            <button v-if="canSheet(v)" class="tb sheetbtn" :title="t('縮圖表（多個時間點的畫面）')"
                     @click="e => openSheet(v, e)">
               <Icon name="grid" :size="14" /></button>
-            <button v-if="store.clipMode" class="tb clipbadge no-mobile" title="剪輯片段"
+            <button v-if="store.clipMode" class="tb clipbadge no-mobile" :title="t('剪輯片段')"
                     @click="e => openClip(v, e)">
               <Icon name="scissors" :size="14" /></button>
             <!-- Still a button, not a disabled one: a dead control tells you
@@ -1087,9 +1088,9 @@ watch(() => store.filesVersion, load)
                  clicking. -->
             <button v-if="store.deleteMode" class="tb delbadge"
                     :class="{ locked: v.fav || v.fav_others }"
-                    :title="v.fav ? '已標為我的最愛，不會被刪除'
-                           : v.fav_others ? `有 ${v.fav_others} 位使用者標為最愛`
-                           : '永久刪除'"
+                    :title="v.fav ? t('已標為我的最愛，不會被刪除')
+                           : v.fav_others ? t('有 {n} 位使用者標為最愛', { n: v.fav_others })
+                           : t('永久刪除')"
                     @click.stop="doDelete(v)">
               <Icon :name="v.fav || v.fav_others ? 'heart' : 'trash'" :size="14" /></button>
           </div>
@@ -1102,7 +1103,7 @@ watch(() => store.filesVersion, load)
                :title="relTag(v).title">{{ relTag(v).text }}</div>
           <!-- whose folder a 共演 video actually lives in -->
           <div v-if="v.lead" class="leadtag"
-               :title="`共演：這部片放在「${v.lead}」的資料夾`">共演・{{ v.lead }}</div>
+               :title="t('共演：這部片放在「{name}」的資料夾', { name: v.lead })">{{ t('共演・{name}', { name: v.lead }) }}</div>
         </div>
         <div class="meta">
           <div class="name" :title="v.name">{{ stem(v.name) }}</div>
@@ -1139,9 +1140,9 @@ watch(() => store.filesVersion, load)
            top of the screen. -->
       <div v-if="screen.mobile" class="barebtns">
         <button class="bbtn" :class="{ on: playing.fav }"
-                :title="playing.fav ? '取消我的最愛' : '加入我的最愛'"
+                :title="playing.fav ? t('取消我的最愛') : t('加入我的最愛')"
                 @click="toggleFav(playing)"><Icon name="heart" :size="20" /></button>
-        <button class="bbtn" title="關閉" @click="close"><Icon name="close" :size="22" /></button>
+        <button class="bbtn" :title="t('關閉')" @click="close"><Icon name="close" :size="22" /></button>
       </div>
       <div class="player-box">
         <div v-if="!screen.mobile" class="player-head">
@@ -1150,8 +1151,8 @@ watch(() => store.filesVersion, load)
                modal is unambiguous, and the space goes to the filename, which
                is the only thing in this row that varies. `.no-mobile` is the
                same switch the toolbar already uses. -->
-          <button class="btn ghost ib" @click="close" title="關閉">
-            <Icon name="close" :size="14" /><span class="no-mobile">關閉</span></button>
+          <button class="btn ghost ib" @click="close" :title="t('關閉')">
+            <Icon name="close" :size="14" /><span class="no-mobile">{{ t('關閉') }}</span></button>
         </div>
         <VideoPlayer :src="playSrc" :subtitle="subUrl" @close="close"
                      @watched="onWatched(playing)" />
@@ -1163,33 +1164,33 @@ watch(() => store.filesVersion, load)
              Only a numbered film has a fetched title to fall back to, so the
              "還原" button is meaningless elsewhere and stays hidden. -->
         <div v-if="!screen.mobile" class="noterow">
-          <span class="nlab ib"><Icon name="film" :size="13" /> 片名</span>
+          <span class="nlab ib"><Icon name="film" :size="13" /> {{ t('片名') }}</span>
           <input v-model="titleStr" :readonly="!canInfo"
-                 :placeholder="fetchedTitle || '輸入片名…'" @blur="saveTitle" />
+                 :placeholder="fetchedTitle || t('輸入片名…')" @blur="saveTitle" />
           <Icon v-if="titleSaved" name="check" :size="14" class="saved" />
           <template v-if="canInfo || playing.released">
-            <span class="nlab ib">發行日</span>
+            <span class="nlab ib">{{ t('發行日') }}</span>
             <input v-model="relStr" class="relin" :class="{ bad: relErr }"
-                   :readonly="!canInfo" placeholder="年-月-日"
-                   title="例如 2026-10-22。只知道年份或年月也可以（2014、2014-05）。清空就改回匯入的日期"
+                   :readonly="!canInfo" :placeholder="t('年-月-日')"
+                   :title="t('例如 2026-10-22。只知道年份或年月也可以（2014、2014-05）。清空就改回匯入的日期')"
                    @blur="saveReleased" @keydown.enter.prevent="$event.target.blur()" />
             <Icon v-if="relSaved" name="check" :size="14" class="saved" />
           </template>
-          <span class="thint">{{ playing.video_id ? '套用到所有同番號的檔案' : '只套用這個檔案' }}</span>
+          <span class="thint">{{ playing.video_id ? t('套用到所有同番號的檔案') : t('只套用這個檔案') }}</span>
           <button v-if="canInfo && titleStr && playing.video_id" class="lnk"
-                  title="清除自訂片名，改回查詢到的"
-                  @click="titleStr = ''; saveTitle()">還原</button>
+                  :title="t('清除自訂片名，改回查詢到的')"
+                  @click="titleStr = ''; saveTitle()">{{ t('還原') }}</button>
         </div>
         <div v-if="!screen.mobile && relErr" class="relerr">{{ relErr }}</div>
         <div v-if="!screen.mobile" class="noterow">
-          <span class="nlab ib"><Icon name="note" :size="13" /> 備忘</span>
+          <span class="nlab ib"><Icon name="note" :size="13" /> {{ t('備忘') }}</span>
           <input v-model="note" :readonly="!canInfo"
-                 placeholder="輸入備忘…" @blur="saveNote" />
+                 :placeholder="t('輸入備忘…')" @blur="saveNote" />
           <Icon v-if="noteSaved" name="check" :size="14" class="saved" />
           <!-- Not behind 編輯模式: this is the viewer's own record, and on the
                phone the whole editing surface is hidden by design. -->
           <button class="favbtn" :class="{ on: playing.fav }"
-                  :title="playing.fav ? '取消我的最愛' : '加入我的最愛'"
+                  :title="playing.fav ? t('取消我的最愛') : t('加入我的最愛')"
                   @click="toggleFav(playing)">
             <Icon name="heart" :size="17" />
           </button>
@@ -1200,52 +1201,52 @@ watch(() => store.filesVersion, load)
              the box. A film with no list is just the chips and the box. -->
         <div v-if="!screen.mobile && (cast.length || costars.length || canInfo)"
              class="noterow corow">
-          <span class="nlab ib"><Icon name="user" :size="13" /> 演出</span>
+          <span class="nlab ib"><Icon name="user" :size="13" /> {{ t('演出') }}</span>
           <span class="cochips">
             <template v-for="c in castLine" :key="c.key">
-              <span v-if="c.lead" class="castname lead" title="主角">{{ c.name }}<span
+              <span v-if="c.lead" class="castname lead" :title="t('主角')">{{ c.name }}<span
                     v-if="c.char && c.char !== c.name" class="castchar">（{{ c.char }}）</span></span>
               <!-- A name with no folder is dashed: it is kept, searchable, and
                    becomes the character by itself once a folder or alias exists. -->
               <span v-else-if="c.chip" class="cochip" :class="{ nm: !c.chip.folder }"
-                    :title="!c.chip.folder ? '共演；沒有角色資料夾，只記名字，之後建了資料夾或加成別名會自動接上'
-                            : c.chip.typed && c.chip.typed !== c.chip.name ? `共演，以「${c.chip.typed}」標記`
-                            : '共演'">{{ c.name }}<span v-if="c.char && c.char !== c.name"
+                    :title="!c.chip.folder ? t('共演；沒有角色資料夾，只記名字，之後建了資料夾或加成別名會自動接上')
+                            : c.chip.typed && c.chip.typed !== c.chip.name ? t('共演，以「{name}」標記', { name: c.chip.typed })
+                            : t('共演')">{{ c.name }}<span v-if="c.char && c.char !== c.name"
                       class="castchar">（{{ c.char }}）</span>
-                <button v-if="canInfo" class="cox" title="移除共演"
+                <button v-if="canInfo" class="cox" :title="t('移除共演')"
                         @click="removeCostar(c.chip)"><Icon name="close" :size="10" /></button>
               </span>
               <button v-else-if="canInfo && !c.marked" class="castname add"
-                      :title="c.folder ? `加入共演：${c.char}` : '加入共演（沒有角色資料夾，只記名字）'"
+                      :title="c.folder ? t('加入共演：{name}', { name: c.char }) : t('加入共演（沒有角色資料夾，只記名字）')"
                       @click="addFromCast(c)">＋ {{ c.name }}<span v-if="c.char && c.char !== c.name"
                         class="castchar">（{{ c.char }}）</span></button>
               <span v-else class="castname">{{ c.name }}</span>
             </template>
             <input v-if="canInfo" v-model="costarInput" class="coin"
-                   list="vam-costar-chars" placeholder="輸入角色名或演員名加入…"
+                   list="vam-costar-chars" :placeholder="t('輸入角色名或演員名加入…')"
                    @change="addTyped" @keydown.enter.prevent="addTyped" />
           </span>
-          <span v-if="canInfo" class="thint">{{ playing.video_id ? '套用到所有同番號的檔案' : '只套用這個檔案' }}</span>
+          <span v-if="canInfo" class="thint">{{ playing.video_id ? t('套用到所有同番號的檔案') : t('只套用這個檔案') }}</span>
         </div>
         <!-- How this film relates to others (AVBase): one you have plays, one
              you do not copies its number. -->
         <div v-if="!screen.mobile && relations.length" class="noterow corow relrow">
-          <span class="nlab ib"><Icon name="link" :size="13" /> 收錄</span>
+          <span class="nlab ib"><Icon name="link" :size="13" /> {{ t('收錄') }}</span>
           <span class="rellist">
             <span v-for="r in (relAll ? relations : relations.slice(0, REL_SHOWN))"
                   :key="r.this_is + r.other" class="relitem">
               <span class="relverb">{{ relVerb(r.kind, r.this_is === 'parent') }}</span>
               <button v-if="r.have" class="relid have"
-                      :title="`你有這部（在「${r.have.char}」）：點一下播放`"
+                      :title="t('你有這部（在「{name}」）：點一下播放', { name: r.have.char })"
                       @click="playRelated(r)">{{ r.other }} ▶</button>
-              <button v-else class="relid" title="你沒有這部：點一下複製番號"
+              <button v-else class="relid" :title="t('你沒有這部：點一下複製番號')"
                       @click="copyId(r.other)">{{ r.other }}</button>
               <span class="reltitle" :title="r.title">{{ r.title }}</span>
               <span class="relmeta">{{ r.date }}<template v-if="relNote(r.kind)"> · {{ relNote(r.kind) }}</template></span>
             </span>
             <button v-if="relations.length > REL_SHOWN" class="relmore"
                     @click="relAll = !relAll">
-              {{ relAll ? '收起' : `還有 ${relations.length - REL_SHOWN} 部` }}</button>
+              {{ relAll ? t('收起') : t('還有 {n} 部', { n: relations.length - REL_SHOWN }) }}</button>
           </span>
         </div>
         <datalist id="vam-costar-chars">
@@ -1258,7 +1259,7 @@ watch(() => store.filesVersion, load)
          button: the scroll position is the only signal needed, and a button
          would interrupt exactly the browsing it is meant to support. -->
     <div v-if="!loading && hasMore" ref="sentinel" class="more">
-      顯示 {{ visible.length }} / {{ sorted.length }} · 繼續捲動載入更多
+      {{ t('顯示 {shown} / {total} · 繼續捲動載入更多', { shown: visible.length, total: sorted.length }) }}
     </div>
   </div>
 </template>

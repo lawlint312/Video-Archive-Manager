@@ -12,29 +12,32 @@
  * as the wiki wrote it — a guess that reads plausibly is worse than a word the
  * user can look up.
  */
+import { t, N_ } from './i18n.js'
+
+// the values are keys too: Chinese is the source language, t() the rest
 const NAMES = {
-  '単体作品': '單體作品',
-  '総集編作品': '總集編',
-  'VR作品': 'VR 作品',
-  '配信作品': '串流作品',
-  '同人サークル作品': '同人社團作品',
-  'イメージ作品': '寫真影片',
-  'その他作品(DVD・BD)': '其他作品（DVD／BD）',
-  'その他作品(配信系)': '其他作品（串流）',
+  '単体作品': N_('單體作品'),
+  '総集編作品': N_('總集編'),
+  'VR作品': N_('VR 作品'),
+  '配信作品': N_('串流作品'),
+  '同人サークル作品': N_('同人社團作品'),
+  'イメージ作品': N_('寫真影片'),
+  'その他作品(DVD・BD)': N_('其他作品（DVD／BD）'),
+  'その他作品(配信系)': N_('其他作品（串流）'),
   // Seen on real pages but currently filtered out as non-video; translated
   // anyway so that if one ever does carry releases it does not appear raw.
-  'その他作品': '其他作品',
-  'オリジナル作品': '原創作品',
-  '企画作品': '企劃作品',
-  'デジタル写真集': '數位寫真集',
+  'その他作品': N_('其他作品'),
+  'オリジナル作品': N_('原創作品'),
+  '企画作品': N_('企劃作品'),
+  'デジタル写真集': N_('數位寫真集'),
   // Not wiki sections: works only an AVBase page lists, split by how many
   // performers the card names (core/catalog.py).
-  'AVBase:単体': '單人（僅 AVBase）',
-  'AVBase:共演': '多人／總集編（僅 AVBase）',
+  'AVBase:単体': N_('單人（僅 AVBase）'),
+  'AVBase:共演': N_('多人／總集編（僅 AVBase）'),
 }
 
 export function sectionName(name) {
-  return NAMES[name] || name || ''
+  return NAMES[name] ? t(NAMES[name]) : name || ''
 }
 
 export function hasTranslation(name) {

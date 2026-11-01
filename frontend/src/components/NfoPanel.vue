@@ -18,6 +18,8 @@ import { setStatus, setBusy } from '../store'
 import { patiently } from '../jobfollow'
 import CharPicker from './CharPicker.vue'
 import Icon from './Icon.vue'
+import { t, N_ } from '../i18n'
+import { ts } from '../serverstrings.js'
 
 const mode = ref('import')           // import | export
 const selected = ref([])
@@ -33,15 +35,16 @@ const limit = ref(300)
 const busy = computed(() => !!running.value)
 defineExpose({ busy })
 
-const TITLE_LANG = { ja: '日', zh: '中', en: '英', '': '' }
-const EXPORT_FIELD = { title: '片名', originaltitle: '原片名', premiered: '發行日',
-                       year: '年份', num: '番號', actor: '演員' }
-const STATUS = { new: '新建', changed: '更新', error: '無法處理' }
+// keys: shown through t()
+const TITLE_LANG = { ja: N_('片名（日）'), zh: N_('片名（中）'), en: N_('片名（英）') }
+const EXPORT_FIELD = { title: N_('片名'), originaltitle: N_('原片名'), premiered: N_('發行日'),
+                       year: N_('年份'), num: N_('番號'), actor: N_('演員') }
+const STATUS = { new: N_('新建'), changed: N_('更新'), error: N_('無法處理') }
 
 function fillLabel(f) {
-  if (f.field === 'title') return `片名${TITLE_LANG[f.lang] ? `（${TITLE_LANG[f.lang]}）` : ''}`
-  if (f.field === 'released') return '發行日'
-  return '共演'
+  if (f.field === 'title') return t(TITLE_LANG[f.lang] || '片名')
+  if (f.field === 'released') return t('發行日')
+  return t('共演')
 }
 
 async function loadLast() {
@@ -65,23 +68,23 @@ async function follow(jobId, label) {
   for (;;) {
     await new Promise(r => setTimeout(r, 700))
     const j = await patiently(() => api(`/api/jobs/${jobId}`))
-    progress.value = j.progress || ''
-    if (j.progress) setBusy(`${label}：${j.progress}`)
+    progress.value = ts(j.progress) || ''
+    if (j.progress) setBusy(t('{label}：{progress}', { label, progress: ts(j.progress) }))
     if (j.status === 'running') continue
-    if (j.status === 'error') throw { detail: j.error || '執行失敗' }
+    if (j.status === 'error') throw { detail: j.error || t('執行失敗') }
     return j.result
   }
 }
 
 async function run(kind) {
-  if (!selected.value.length) { error.value = '請至少選擇一位角色'; return }
+  if (!selected.value.length) { error.value = t('請至少選擇一位角色'); return }
   error.value = ''
   running.value = kind
   if (kind === 'scan') { result.value = null; applied.value = null; limit.value = 300 }
   pickerOpen.value = false
-  const label = kind === 'scan' ? 'NFO 比對'
-    : mode.value === 'import' ? '匯入 NFO' : '寫入 NFO'
-  setBusy(`${label}：啟動中…`)
+  const label = kind === 'scan' ? t('NFO 比對')
+    : mode.value === 'import' ? t('匯入 NFO') : t('寫入 NFO')
+  setBusy(t('{label}：啟動中…', { label }))
   try {
     const { job_id } = await api(`/api/nfo/${kind}`, {
       method: 'POST', body: JSON.stringify({ names: selected.value, mode: mode.value }),
@@ -95,7 +98,7 @@ async function run(kind) {
       if (mode.value === 'export') loadLast()
     }
   } catch (e) {
-    error.value = `${label}失敗：${errText(e)}`
+    error.value = t('{label}失敗：{error}', { label, error: errText(e) })
   } finally {
     running.value = ''
     progress.value = ''
@@ -106,30 +109,28 @@ async function run(kind) {
 function apply() {
   if (mode.value === 'export') {
     const c = result.value.counts
-    if (!confirm(`寫入 NFO：新建 ${c.new} 個、更新 ${c.changed} 個？\n\n`
-                 + '只改片名、原片名、發行日、演員、番號；檔案裡其他內容不動。'
-                 + '\n更新前會先備份，寫完可以「復原上一批」。')) return
+    if (!confirm(t('寫入 NFO：新建 {new} 個、更新 {changed} 個？\n\n只改片名、原片名、發行日、演員、番號；檔案裡其他內容不動。\n更新前會先備份，寫完可以「復原上一批」。',
+                   { new: c.new, changed: c.changed }))) return
   }
   run('apply')
 }
 
 async function undo() {
   const l = last.value
-  if (!l || !confirm(`復原上一批寫入（新建 ${l.created} 個、更新 ${l.updated} 個）？\n\n`
-                     + '新建的檔會移除，更新的檔換回原本的內容。'
-                     + '\n之後被別的程式（例如 Jellyfin）改過的檔會保留，不會蓋掉。')) return
+  if (!l || !confirm(t('復原上一批寫入（新建 {created} 個、更新 {updated} 個）？\n\n新建的檔會移除，更新的檔換回原本的內容。\n之後被別的程式（例如 Jellyfin）改過的檔會保留，不會蓋掉。',
+                       { created: l.created, updated: l.updated }))) return
   running.value = 'undo'
   error.value = ''
   try {
     const r = await api('/api/nfo/undo', { method: 'POST' })
-    const skipped = r.skipped.length ? `，${r.skipped.length} 個之後被改過而保留` : ''
-    setStatus(`已復原：換回 ${r.restored} 個、移除 ${r.removed} 個${skipped}`,
+    const skipped = r.skipped.length ? t('，{n} 個之後被改過而保留', { n: r.skipped.length }) : ''
+    setStatus(t('已復原：換回 {restored} 個、移除 {removed} 個', { restored: r.restored, removed: r.removed }) + skipped,
               r.skipped.length ? 'warn' : 'ok')
     applied.value = null
     result.value = null
     pickerOpen.value = true
     await loadLast()
-  } catch (e) { error.value = '復原失敗：' + errText(e) }
+  } catch (e) { error.value = t('復原失敗：') + errText(e) }
   finally { running.value = '' }
 }
 
@@ -143,10 +144,11 @@ const summary = computed(() => {
   const a = applied.value
   if (!a) return ''
   if (mode.value === 'import') {
-    return `已匯入：片名 ${a.titles}、發行日 ${a.released}、共演 ${a.costars}`
+    return t('已匯入：片名 {titles}、發行日 {released}、共演 {costars}',
+             { titles: a.titles, released: a.released, costars: a.costars })
   }
-  const err = a.errors.length ? `，${a.errors.length} 個失敗` : ''
-  return `已寫入 NFO：新建 ${a.created}、更新 ${a.updated}${err}`
+  const err = a.errors.length ? t('，{n} 個失敗', { n: a.errors.length }) : ''
+  return t('已寫入 NFO：新建 {created}、更新 {updated}', { created: a.created, updated: a.updated }) + err
 })
 
 function short(p) { return p.split(/[\\/]/).slice(-2).join('\\') }
@@ -157,52 +159,50 @@ function short(p) { return p.split(/[\\/]/).slice(-2).join('\\') }
     <div class="modes">
       <button class="seg" :class="{ on: mode === 'import' }" :disabled="busy"
               @click="setMode('import')">
-        <Icon name="down" :size="13" /> 讀入 VAM
+        <Icon name="down" :size="13" /> {{ t('讀入 VAM') }}
       </button>
       <button class="seg" :class="{ on: mode === 'export' }" :disabled="busy"
               @click="setMode('export')">
-        <Icon name="up" :size="13" /> 寫出 NFO
+        <Icon name="up" :size="13" /> {{ t('寫出 NFO') }}
       </button>
       <span class="spacer"></span>
       <button v-if="mode === 'export' && last" class="btn ghost sm" :disabled="busy"
               @click="undo">
-        <Icon name="history" :size="13" /> 復原上一批（{{ last.count }} 個檔）
+        <Icon name="history" :size="13" /> {{ t('復原上一批（{n} 個檔）', { n: last.count }) }}
       </button>
     </div>
 
     <div class="intro">
       <template v-if="mode === 'import'">
-        讀取影片旁同名的 <b>.nfo</b>（Kodi／Jellyfin／Emby 的格式），把 VAM 還沒有的
-        <b>片名、發行日、共演</b>補上。<b>只補空的</b>：你手打的、從 wiki 匯入的片名不會被換掉。
-        只寫 VAM 自己的資料庫，不動任何檔案。
+        {{ t('讀取影片旁同名的') }} <b>.nfo</b>{{ t('（Kodi／Jellyfin／Emby 的格式），把 VAM 還沒有的') }}
+        <b>{{ t('片名、發行日、共演') }}</b>{{ t('補上。') }}<b>{{ t('只補空的') }}</b>{{ t('：你手打的、從 wiki 匯入的片名不會被換掉。只寫 VAM 自己的資料庫，不動任何檔案。') }}
       </template>
       <template v-else>
-        把 VAM 的<b>片名、原片名、發行日、演員、番號</b>寫進每部影片旁的 <b>.nfo</b>。
-        已經有 NFO 的會<b>合併</b>：只更新這幾欄，簡介、海報、串流資訊等原樣保留；
-        演員只加不刪。更新前先備份，寫完可以復原上一批。
-        <br />提醒：Jellyfin 若開了「把中繼資料存成 NFO」，它重新整理時可能會改寫這些檔。
+        {{ t('把 VAM 的') }}<b>{{ t('片名、原片名、發行日、演員、番號') }}</b>{{ t('寫進每部影片旁的') }} <b>.nfo</b>{{ t('。') }}
+        {{ t('已經有 NFO 的會') }}<b>{{ t('合併') }}</b>{{ t('：只更新這幾欄，簡介、海報、串流資訊等原樣保留；演員只加不刪。更新前先備份，寫完可以復原上一批。') }}
+        <br />{{ t('提醒：Jellyfin 若開了「把中繼資料存成 NFO」，它重新整理時可能會改寫這些檔。') }}
       </template>
     </div>
 
     <button v-if="!pickerOpen" class="scopebar" @click="pickerOpen = true">
       <Icon name="chevronRight" :size="13" />
-      範圍：已選 {{ selected.length }} 位角色
-      <span class="chg">重新選擇</span>
+      {{ t('範圍：已選 {n} 位角色', { n: selected.length }) }}
+      <span class="chg">{{ t('重新選擇') }}</span>
     </button>
     <div v-if="pickerOpen" class="scope">
       <CharPicker mode="plain" :initial="selected" :disabled="busy"
                   @update:selected="v => selected = v" />
       <div class="row">
         <button class="btn" :disabled="busy || !selected.length" @click="run('scan')">
-          <Icon name="search" :size="14" /> 預覽
+          <Icon name="search" :size="14" /> {{ t('預覽') }}
         </button>
-        <span class="hint">預覽不會寫入任何東西。</span>
+        <span class="hint">{{ t('預覽不會寫入任何東西。') }}</span>
       </div>
     </div>
 
     <div v-if="running" class="prog">
       <Icon name="spinner" :size="13" class="spin" />
-      {{ progress || (running === 'scan' ? '比對中…' : running === 'undo' ? '復原中…' : '寫入中…') }}
+      {{ progress || (running === 'scan' ? t('比對中…') : running === 'undo' ? t('復原中…') : t('寫入中…')) }}
     </div>
     <div v-if="error" class="err">{{ error }}</div>
     <div v-if="applied" class="done">
@@ -214,25 +214,25 @@ function short(p) { return p.split(/[\\/]/).slice(-2).join('\\') }
     <!-- 讀入 VAM -->
     <div v-if="result && !pickerOpen && mode === 'import'" class="results">
       <div class="bar">
-        {{ result.videos }} 部影片 · 找到 <b>{{ result.found }}</b> 個 NFO ·
-        可補上 <b>{{ rows.length + (result.more || 0) }}</b> 部的資料
+        {{ t('{n} 部影片', { n: result.videos }) }} · {{ t('找到') }} <b>{{ result.found }}</b> {{ t('個 NFO') }} ·
+        {{ t('可補上') }} <b>{{ rows.length + (result.more || 0) }}</b> {{ t('部的資料') }}
         <span class="spacer"></span>
         <button class="btn sm" :disabled="busy || !canApply || !!applied" @click="apply">
-          <Icon name="check" :size="13" /> 寫入 VAM
+          <Icon name="check" :size="13" /> {{ t('寫入 VAM') }}
         </button>
       </div>
       <details v-if="result.unmatched.length" class="more">
-        <summary>{{ result.unmatched.length }} 個演員名對不到任何角色（不處理）</summary>
+        <summary>{{ t('{n} 個演員名對不到任何角色（不處理）', { n: result.unmatched.length }) }}</summary>
         <div class="names">
           <span v-for="u in result.unmatched" :key="u.name">{{ u.name }}<i>×{{ u.count }}</i></span>
         </div>
       </details>
       <details v-if="result.errors.length" class="more">
-        <summary class="bad">{{ result.errors.length }} 個 NFO 讀不懂（略過）</summary>
+        <summary class="bad">{{ t('{n} 個 NFO 讀不懂（略過）', { n: result.errors.length }) }}</summary>
         <div v-for="e in result.errors" :key="e.path" class="eline">
           {{ short(e.path) }}：{{ e.error }}</div>
       </details>
-      <div v-if="!rows.length" class="hint">沒有要補的：NFO 裡的資料 VAM 都已經有了。</div>
+      <div v-if="!rows.length" class="hint">{{ t('沒有要補的：NFO 裡的資料 VAM 都已經有了。') }}</div>
       <div class="list">
         <div v-for="r in rows.slice(0, limit)" :key="r.path" class="item">
           <div class="who"><b>{{ r.name }}</b><span class="char">{{ r.char }}</span></div>
@@ -242,40 +242,40 @@ function short(p) { return p.split(/[\\/]/).slice(-2).join('\\') }
           </div>
         </div>
         <button v-if="rows.length > limit" class="lnk" @click="limit += 300">
-          再顯示 {{ Math.min(300, rows.length - limit) }} 筆（共 {{ rows.length }}）</button>
-        <div v-if="result.more" class="hint">另有 {{ result.more }} 筆沒有列出，寫入時一樣會處理。</div>
+          {{ t('再顯示 {n} 筆（共 {total}）', { n: Math.min(300, rows.length - limit), total: rows.length }) }}</button>
+        <div v-if="result.more" class="hint">{{ t('另有 {n} 筆沒有列出，寫入時一樣會處理。', { n: result.more }) }}</div>
       </div>
     </div>
 
     <!-- 寫出 NFO -->
     <div v-if="result && !pickerOpen && mode === 'export'" class="results">
       <div class="bar">
-        {{ result.videos }} 部影片 ·
-        新建 <b>{{ result.counts.new }}</b> ·
-        更新 <b>{{ result.counts.changed }}</b> ·
-        沒變 {{ result.counts.same }}
-        <template v-if="result.counts.error"> · <b class="bad">無法處理 {{ result.counts.error }}</b></template>
+        {{ t('{n} 部影片', { n: result.videos }) }} ·
+        {{ t('新建') }} <b>{{ result.counts.new }}</b> ·
+        {{ t('更新') }} <b>{{ result.counts.changed }}</b> ·
+        {{ t('沒變 {n}', { n: result.counts.same }) }}
+        <template v-if="result.counts.error"> · <b class="bad">{{ t('無法處理 {n}', { n: result.counts.error }) }}</b></template>
         <span class="spacer"></span>
         <button class="btn sm" :disabled="busy || !canApply || !!applied" @click="apply">
-          <Icon name="check" :size="13" /> 寫入 NFO
+          <Icon name="check" :size="13" /> {{ t('寫入 NFO') }}
         </button>
       </div>
       <div v-if="!canApply && !result.counts.error" class="hint">
-        全部都已經是最新的，不需要寫入。</div>
+        {{ t('全部都已經是最新的，不需要寫入。') }}</div>
       <div class="list">
         <div v-for="it in items.slice(0, limit)" :key="it.path" class="item">
           <div class="who">
-            <span class="st" :class="it.status">{{ STATUS[it.status] }}</span>
+            <span class="st" :class="it.status">{{ STATUS[it.status] ? t(STATUS[it.status]) : it.status }}</span>
             <b>{{ short(it.nfo) }}</b>
           </div>
           <div class="fills">
             <template v-if="it.status === 'error'"><span class="bad">{{ it.error }}</span></template>
-            <span v-else v-for="f in it.fields" :key="f" class="fill"><em>{{ EXPORT_FIELD[f] || f }}</em></span>
+            <span v-else v-for="f in it.fields" :key="f" class="fill"><em>{{ EXPORT_FIELD[f] ? t(EXPORT_FIELD[f]) : f }}</em></span>
           </div>
         </div>
         <button v-if="items.length > limit" class="lnk" @click="limit += 300">
-          再顯示 {{ Math.min(300, items.length - limit) }} 筆（共 {{ items.length }}）</button>
-        <div v-if="result.more" class="hint">另有 {{ result.more }} 筆沒有列出，寫入時一樣會處理。</div>
+          {{ t('再顯示 {n} 筆（共 {total}）', { n: Math.min(300, items.length - limit), total: items.length }) }}</button>
+        <div v-if="result.more" class="hint">{{ t('另有 {n} 筆沒有列出，寫入時一樣會處理。', { n: result.more }) }}</div>
       </div>
     </div>
   </div>

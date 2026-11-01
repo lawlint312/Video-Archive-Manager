@@ -680,6 +680,19 @@ def me(request: Request, user: dict = Depends(auth.current_user)):
     return auth.public_user(**user)
 
 
+class LangBody(BaseModel):
+    lang: str
+
+
+@app.post("/api/auth/lang")
+def set_own_lang(body: LangBody, user: dict = Depends(auth.current_user)):
+    """Any signed-in account picks its own interface language."""
+    if body.lang not in auth.LANGS:
+        raise HTTPException(status_code=400, detail=f"unknown language: {body.lang}")
+    auth.set_lang(user["id"], body.lang)
+    return {"ok": True, "lang": body.lang}
+
+
 class OwnPasswordBody(BaseModel):
     current_password: str
     new_password: str

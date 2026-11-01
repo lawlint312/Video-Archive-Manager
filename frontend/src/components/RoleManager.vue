@@ -2,6 +2,8 @@
 import { ref, computed, onMounted } from 'vue'
 import { api, errText } from '../api'
 import Icon from './Icon.vue'
+import { t } from '../i18n'
+import { ts } from '../serverstrings.js'
 
 const roles = ref([])
 const catalogue = ref([])
@@ -22,7 +24,7 @@ const sections = computed(() => {
   }
   return out
 })
-const labelOf = k => (catalogue.value.find(p => p.key === k) || {}).label || k
+const labelOf = k => ts((catalogue.value.find(p => p.key === k) || {}).label || k)
 
 async function load() {
   loading.value = true
@@ -30,7 +32,7 @@ async function load() {
     const d = await api('/api/roles')
     roles.value = d.roles
     catalogue.value = d.catalogue
-  } catch (e) { error.value = '載入失敗：' + errText(e) }
+  } catch (e) { error.value = t('載入失敗：') + errText(e) }
   finally { loading.value = false }
 }
 
@@ -66,7 +68,7 @@ async function save() {
 }
 
 async function remove(r) {
-  if (!confirm(`刪除權限組「${r.name}」？`)) return
+  if (!confirm(t('刪除權限組「{name}」？', { name: r.name }))) return
   busy.value = true
   error.value = ''
   try {
@@ -82,70 +84,68 @@ onMounted(load)
 <template>
   <div class="wrap">
     <div class="intro">
-      每個帳號屬於一個權限組，勾了哪些功能就只能用哪些。<b>管理員固定擁有全部權限</b>，
-      另外只有管理員能改設定、管帳號、看登入紀錄與備份。
-      <br>任何權限組只要勾了一項以上，組裡的帳號都<b>必須開啟兩步驟驗證</b>；什麼都沒勾的等同唯讀，可以自行選擇。
-      修改勾選後，下一次操作就生效，不用重新登入。
+      {{ t('每個帳號屬於一個權限組，勾了哪些功能就只能用哪些。') }}<b>{{ t('管理員固定擁有全部權限') }}</b>{{ t('，另外只有管理員能改設定、管帳號、看登入紀錄與備份。') }}
+      <br>{{ t('任何權限組只要勾了一項以上，組裡的帳號都') }}<b>{{ t('必須開啟兩步驟驗證') }}</b>{{ t('；什麼都沒勾的等同唯讀，可以自行選擇。修改勾選後，下一次操作就生效，不用重新登入。') }}
     </div>
 
-    <div v-if="loading" class="msg">載入中…</div>
+    <div v-if="loading" class="msg">{{ t('載入中…') }}</div>
     <template v-else>
       <div class="list">
         <div v-for="r in roles" :key="r.key" class="role" :class="{ fixed: r.fixed }">
           <div class="rhead">
-            <b>{{ r.name }}</b>
-            <span v-if="r.fixed" class="tag">固定</span>
-            <span v-else-if="r.builtin" class="tag dim">內建</span>
-            <span v-if="!r.fixed" class="members">{{ r.members }} 個帳號</span>
-            <span v-if="r.fixed || r.perms.length" class="tag twofa">需兩步驟驗證</span>
+            <b>{{ ts(r.name) }}</b>
+            <span v-if="r.fixed" class="tag">{{ t('固定') }}</span>
+            <span v-else-if="r.builtin" class="tag dim">{{ t('內建') }}</span>
+            <span v-if="!r.fixed" class="members">{{ t('{n} 個帳號', { n: r.members }) }}</span>
+            <span v-if="r.fixed || r.perms.length" class="tag twofa">{{ t('需兩步驟驗證') }}</span>
             <span class="spacer"></span>
             <template v-if="!r.fixed">
-              <button class="lnk" @click="startEdit(r)">編輯</button>
+              <button class="lnk" @click="startEdit(r)">{{ t('編輯') }}</button>
               <button v-if="!r.builtin" class="lnk del" :disabled="busy"
-                      @click="remove(r)">刪除</button>
+                      @click="remove(r)">{{ t('刪除') }}</button>
             </template>
           </div>
           <div class="perms">
-            <span v-if="r.fixed" class="pchip all">全部功能 ＋ 設定、帳號管理、登入紀錄、備份</span>
-            <span v-else-if="!r.perms.length" class="none">只能瀏覽（唯讀）</span>
+            <span v-if="r.fixed" class="pchip all">{{ t('全部功能 ＋ 設定、帳號管理、登入紀錄、備份') }}</span>
+            <span v-else-if="!r.perms.length" class="none">{{ t('只能瀏覽（唯讀）') }}</span>
             <span v-else v-for="k in r.perms" :key="k" class="pchip">{{ labelOf(k) }}</span>
           </div>
         </div>
       </div>
 
       <button v-if="!editing" class="btn addbtn ib" @click="startNew">
-        <Icon name="plus" :size="14" /> 新增權限組</button>
+        <Icon name="plus" :size="14" /> {{ t('新增權限組') }}</button>
 
       <div v-if="editing" class="form">
-        <div class="fhead">{{ editing === 'new' ? '新增權限組' : `編輯「${form.name}」` }}</div>
-        <label class="lab">名稱</label>
-        <input v-model="form.name" maxlength="30" placeholder="例如：整理員"
+        <div class="fhead">{{ editing === 'new' ? t('新增權限組') : t('編輯「{name}」', { name: form.name }) }}</div>
+        <label class="lab">{{ t('名稱') }}</label>
+        <input v-model="form.name" maxlength="30" :placeholder="t('例如：整理員')"
                name="vam-role-name" autocomplete="off" />
 
-        <div class="lab row">勾選可以使用的功能
+        <div class="lab row">{{ t('勾選可以使用的功能') }}
           <span class="spacer"></span>
-          <button class="lnk" @click="setAll(true)">全選</button>
-          <button class="lnk" @click="setAll(false)">全不選</button>
+          <button class="lnk" @click="setAll(true)">{{ t('全選') }}</button>
+          <button class="lnk" @click="setAll(false)">{{ t('全不選') }}</button>
         </div>
         <div v-for="s in sections" :key="s.name" class="section">
-          <div class="sname">{{ s.name }}</div>
+          <div class="sname">{{ ts(s.name) }}</div>
           <label v-for="p in s.perms" :key="p.key" class="perm"
                  :class="{ on: form.perms.includes(p.key) }">
             <input type="checkbox" :checked="form.perms.includes(p.key)"
                    @change="toggle(p.key)" />
-            <b>{{ p.label }}</b><span>{{ p.hint }}</span>
+            <b>{{ ts(p.label) }}</b><span>{{ ts(p.hint) }}</span>
           </label>
         </div>
         <div class="hint">
-          <template v-if="form.perms.length">這個組的帳號必須開啟兩步驟驗證。</template>
-          <template v-else>什麼都沒勾 = 唯讀，兩步驟驗證可自行選擇。</template>
+          <template v-if="form.perms.length">{{ t('這個組的帳號必須開啟兩步驟驗證。') }}</template>
+          <template v-else>{{ t('什麼都沒勾 = 唯讀，兩步驟驗證可自行選擇。') }}</template>
         </div>
 
         <div v-if="error" class="err">{{ error }}</div>
         <div class="frow">
           <button class="btn" :disabled="busy || !form.name.trim()" @click="save">
-            {{ busy ? '儲存中…' : '儲存' }}</button>
-          <button class="btn ghost" :disabled="busy" @click="cancel">取消</button>
+            {{ busy ? t('儲存中…') : t('儲存') }}</button>
+          <button class="btn ghost" :disabled="busy" @click="cancel">{{ t('取消') }}</button>
         </div>
       </div>
 

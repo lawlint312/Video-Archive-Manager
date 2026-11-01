@@ -13,6 +13,8 @@ import { store, setStatus, setBusy } from '../store'
 import { formatDob, formatAge, FIELD_LABELS } from '../profilefields'
 import CharPicker from './CharPicker.vue'
 import Icon from './Icon.vue'
+import { t } from '../i18n'
+import { ts } from '../serverstrings.js'
 
 const emit = defineEmits(['close'])
 
@@ -71,8 +73,8 @@ function pickAvatar(r, i) {
   if (r.avatar.pick != null && !r.vote?.suggest) r.approved = true
 }
 function avatarTitle(c) {
-  return `${c.source}　·　用「${c.by}」查到` +
-    (c.weak ? '\n這個名字太短或太通用，可能是別人，所以不預選' : '')
+  return t('{source}　·　用「{by}」查到', { source: c.source, by: c.by }) +
+    (c.weak ? '\n' + t('這個名字太短或太通用，可能是別人，所以不預選') : '')
 }
 
 /** Say yes or no to a renamed-performer suggestion. */
@@ -86,7 +88,7 @@ async function decide(row, yes) {
     row.rejected = !yes
     row.approved = yes
   } catch (e) {
-    error.value = '記錄失敗：' + errText(e)
+    error.value = t('記錄失敗：') + errText(e)
   }
 }
 
@@ -104,13 +106,13 @@ function willWrite(r) {
 }
 
 async function scan() {
-  if (!selected.value.length) { error.value = '請至少選擇一位角色'; return }
+  if (!selected.value.length) { error.value = t('請至少選擇一位角色'); return }
   error.value = ''
   scanning.value = true
   rows.value = null
   done.value = null
   pickerOpen.value = false
-  setBusy('JAV個資查詢：啟動中…')
+  setBusy(t('JAV個資查詢：啟動中…'))
   try {
     const { job_id } = await api('/api/idolprofile/scan', {
       method: 'POST',
@@ -120,7 +122,7 @@ async function scan() {
       await new Promise(r => setTimeout(r, 700))
       const j = await api(`/api/dedup/job/${job_id}`)
       progress.value = j.progress || ''
-      if (j.progress) setBusy('JAV個資查詢：' + j.progress)
+      if (j.progress) setBusy(t('JAV個資查詢：') + j.progress)
       if (j.status === 'done') {
         // resolved rows start approved; a renamed-performer suggestion never
         // does — that one needs a human to say "yes, same person"
@@ -132,10 +134,10 @@ async function scan() {
         }))
         break
       }
-      if (j.status === 'error') { error.value = j.error || '查詢失敗'; break }
+      if (j.status === 'error') { error.value = ts(j.error) || t('查詢失敗'); break }
     }
   } catch (e) {
-    error.value = '查詢失敗：' + errText(e)
+    error.value = t('查詢失敗：') + errText(e)
   } finally {
     scanning.value = false
     progress.value = ''
@@ -146,17 +148,17 @@ async function scan() {
 async function apply() {
   const picked = (rows.value || []).filter(r => r.approved && willWrite(r))
   if (!picked.length) return
-  const names = picked.map(r => r.name).join('、')
+  const names = picked.map(r => r.name).join(t('、'))
   const avatars = picked.filter(r => pickedAvatar(r)).length
   const swaps = picked.filter(r => pickedAvatar(r) && r.avatar.current).length
   const fieldSwaps = picked.reduce((n, r) =>
     n + (r.fields || []).filter(f => f.replace && f.approved).length, 0)
-  if (!confirm(`將寫入 ${picked.length} 位角色的個人資料：\n\n${names}\n\n` +
-               (avatars ? `其中 ${avatars} 位會設定圖庫的大頭照` +
-                          (swaps ? `（${swaps} 位是取代目前的）` : '') +
-                          `，存進角色資料夾的 .vam 子資料夾。\n` : '') +
-               (fieldSwaps ? `會取代 ${fieldSwaps} 個已有的欄位（你勾選的），其餘已有內容的欄位跳過。`
-                           : `已有內容的欄位一律跳過，不會覆蓋。`))) return
+  if (!confirm(t('將寫入 {n} 位角色的個人資料：', { n: picked.length }) + `\n\n${names}\n\n` +
+               (avatars ? t('其中 {n} 位會設定圖庫的大頭照', { n: avatars }) +
+                          (swaps ? t('（{n} 位是取代目前的）', { n: swaps }) : '') +
+                          t('，存進角色資料夾的 .vam 子資料夾。') + '\n' : '') +
+               (fieldSwaps ? t('會取代 {n} 個已有的欄位（你勾選的），其餘已有內容的欄位跳過。', { n: fieldSwaps })
+                           : t('已有內容的欄位一律跳過，不會覆蓋。')))) return
   applying.value = true
   try {
     const r = await api('/api/idolprofile/apply', {
@@ -176,10 +178,10 @@ async function apply() {
     }
     const set = r.written.filter(w => w.avatar).length
     if (set) store.charsVersion++
-    setStatus(`已寫入 ${r.written.length} 位角色的個人資料` +
-              (set ? `，其中 ${set} 位設定了大頭照` : ''), 'ok')
+    setStatus(t('已寫入 {n} 位角色的個人資料', { n: r.written.length }) +
+              (set ? t('，其中 {n} 位設定了大頭照', { n: set }) : ''), 'ok')
   } catch (e) {
-    error.value = '寫入失敗：' + errText(e)
+    error.value = t('寫入失敗：') + errText(e)
   } finally { applying.value = false }
 }
 </script>
@@ -192,8 +194,8 @@ async function apply() {
            after a scan, when the results need the height. -->
       <button v-if="!pickerOpen" class="scopebar" @click="pickerOpen = true">
         <Icon name="chevronRight" :size="13" />
-        範圍：已選 {{ selected.length }} 位角色
-        <span class="chg">重新選擇</span>
+        {{ t('範圍：已選 {n} 位角色', { n: selected.length }) }}
+        <span class="chg">{{ t('重新選擇') }}</span>
       </button>
 
       <!-- `v-if`, not `v-show`: CharPicker fetches each character's
@@ -204,19 +206,19 @@ async function apply() {
         <CharPicker :disabled="scanning" @update:selected="v => selected = v" />
         <div class="row">
           <button class="btn" :disabled="scanning || !selected.length" @click="scan">
-            <Icon name="search" :size="14" /> 開始查詢
+            <Icon name="search" :size="14" /> {{ t('開始查詢') }}
           </button>
-          <label class="recheck" title="已有的欄位會列出「目前 → 新值」，勾了才取代；已有大頭照的也列出圖庫候選，不預選">
+          <label class="recheck" :title="t('已有的欄位會列出「目前 → 新值」，勾了才取代；已有大頭照的也列出圖庫候選，不預選')">
             <input type="checkbox" v-model="recheck" :disabled="scanning" />
-            也查詢已有的個資與大頭照
+            {{ t('也查詢已有的個資與大頭照') }}
           </label>
-          <span class="hint">只會讀取網站，不會寫入任何檔案</span>
+          <span class="hint">{{ t('只會讀取網站，不會寫入任何檔案') }}</span>
         </div>
       </div>
 
       <div v-if="scanning" class="prog">
-        <Icon name="spinner" :size="13" class="spin" /> {{ progress || '查詢中…' }}
-        <span class="hint">每個請求間隔 1 秒，這是對來源站的禮貌</span>
+        <Icon name="spinner" :size="13" class="spin" /> {{ progress || t('查詢中…') }}
+        <span class="hint">{{ t('每個請求間隔 1 秒，這是對來源站的禮貌') }}</span>
       </div>
       <div v-if="error" class="err">{{ error }}</div>
 
@@ -226,12 +228,12 @@ async function apply() {
            You are either setting up a run or reviewing the last one. -->
       <div v-if="rows && !pickerOpen" class="results">
         <div class="bar">
-          <span>可寫入 <b>{{ resolved.length }}</b></span>
-          <span v-if="suggested.length">· 待確認 <b class="warn">{{ suggested.length }}</b></span>
-          <span v-if="unresolved.length">· 無法判斷 <b class="dim">{{ unresolved.length }}</b></span>
+          <span>{{ t('可寫入') }} <b>{{ resolved.length }}</b></span>
+          <span v-if="suggested.length">· {{ t('待確認') }} <b class="warn">{{ suggested.length }}</b></span>
+          <span v-if="unresolved.length">· {{ t('無法判斷') }} <b class="dim">{{ unresolved.length }}</b></span>
           <span class="spacer"></span>
           <button class="btn" :disabled="applying || !approvedCount" @click="apply">
-            {{ applying ? '寫入中…' : `寫入已勾選的 ${approvedCount} 位` }}
+            {{ applying ? t('寫入中…') : t('寫入已勾選的 {n} 位', { n: approvedCount }) }}
           </button>
         </div>
 
@@ -251,15 +253,15 @@ async function apply() {
                      look at her page, so link straight to it -->
                 <a class="perf" :href="JDB + r.vote.slug + '/'" target="_blank"
                    rel="noopener noreferrer" @click.stop
-                   :title="'在 javdatabase 開啟'">{{ r.performer || r.vote.name
+                   :title="t('在 javdatabase 開啟')">{{ r.performer || r.vote.name
                    }}<Icon name="link" :size="10" /></a>
                 <span v-if="r.romaji" class="rom">{{ r.romaji }}</span>
                 <button class="vote" @click.prevent.stop="toggleVotes(r.name)">
-                  {{ r.vote.n }}/{{ r.vote.checked }} 部
+                  {{ t('{n}/{total} 部', { n: r.vote.n, total: r.vote.checked }) }}
                   <Icon :name="expanded[r.name] ? 'chevronDown' : 'chevronRight'" :size="10" />
                 </button>
               </template>
-              <span v-if="r.written" class="ok">已寫入</span>
+              <span v-if="r.written" class="ok">{{ t('已寫入') }}</span>
             </label>
 
             <div v-if="expanded[r.name]" class="votes">
@@ -273,23 +275,22 @@ async function apply() {
                  performer after a rename, so it is offered, never assumed -->
             <div v-if="r.vote?.suggest" class="suggest">
               <Icon name="warn" :size="12" />
-              <span>{{ r.vote.reason }}</span>
+              <span>{{ ts(r.vote.reason) }}</span>
               <template v-if="!r.written">
                 <button class="btn xs" :class="{ on: r.approved }"
-                        @click="decide(r, true)">確認是同一人</button>
+                        @click="decide(r, true)">{{ t('確認是同一人') }}</button>
                 <button class="btn ghost xs" :class="{ no: r.rejected }"
-                        @click="decide(r, false)">不是</button>
+                        @click="decide(r, false)">{{ t('不是') }}</button>
               </template>
-              <span v-if="r.rejected" class="rejnote">已記錄為否決，下次仍會列出</span>
+              <span v-if="r.rejected" class="rejnote">{{ t('已記錄為否決，下次仍會列出') }}</span>
             </div>
             <div v-if="r.vote?.suggest && r.approved" class="willdo">
-              <Icon name="checked" :size="12" /> 已確認 —— 按上方「寫入」就會存入這位
-              演員的個資，並把「{{ r.vote.name }}」加進別名
+              <Icon name="checked" :size="12" /> {{ t('已確認 —— 按上方「寫入」就會存入這位演員的個資，並把「{name}」加進別名', { name: r.vote.name }) }}
             </div>
-            <div v-else-if="!r.ok" class="why">{{ r.vote?.reason || '無法判斷' }}</div>
+            <div v-else-if="!r.ok" class="why">{{ r.vote?.reason ? ts(r.vote.reason) : t('無法判斷') }}</div>
 
             <div v-if="r.profile" class="fields">
-              <span v-if="ageOf(r)" class="f"><i>年齡</i>{{ ageOf(r) }}</span>
+              <span v-if="ageOf(r)" class="f"><i>{{ t('年齡') }}</i>{{ ageOf(r) }}</span>
               <template v-for="f in r.fields" :key="f.key">
                 <!-- a recheck: the value differs from what is there, and only
                      a tick replaces it -->
@@ -297,17 +298,17 @@ async function apply() {
                   <input type="checkbox" v-model="f.approved"
                          :disabled="applying || r.written"
                          @change="f.approved && !r.vote?.suggest && (r.approved = true)" />
-                  <i>{{ LABEL[f.key] || f.key }}</i>
+                  <i>{{ LABEL[f.key] ? t(LABEL[f.key]) : f.key }}</i>
                   <s>{{ fmt(f.key, f.current) }}</s> → {{ fmt(f.key, f.value) }}
                 </label>
                 <span v-else class="f" :class="{ skip: f.skip }">
-                  <i>{{ LABEL[f.key] || f.key }}</i>{{ fmt(f.key, f.value) }}
-                  <em v-if="f.skip">已有，跳過</em>
+                  <i>{{ LABEL[f.key] ? t(LABEL[f.key]) : f.key }}</i>{{ fmt(f.key, f.value) }}
+                  <em v-if="f.skip">{{ t('已有，跳過') }}</em>
                 </span>
               </template>
             </div>
             <div v-if="r.new_aliases?.length" class="alias">
-              別名將新增：{{ r.new_aliases.join('、') }}
+              {{ t('別名將新增：') }}{{ r.new_aliases.join(t('、')) }}
             </div>
 
             <!-- Offered when the character has no avatar yet, or on a recheck
@@ -315,10 +316,10 @@ async function apply() {
                  preselected). The pictures come through the server
                  (/api/gfriends/image), so the browser never contacts GitHub. -->
             <div v-if="r.avatar && !r.written" class="avatars">
-              <span class="alab">大頭照</span>
-              <span v-if="r.avatar.current_path" class="av cur" title="目前的大頭照">
+              <span class="alab">{{ t('大頭照') }}</span>
+              <span v-if="r.avatar.current_path" class="av cur" :title="t('目前的大頭照')">
                 <img :src="imageThumbUrl(r.avatar.current_path)" alt="" />
-                <span class="src">目前</span>
+                <span class="src">{{ t('目前') }}</span>
               </span>
               <button v-for="(c, i) in r.avatar.choices" :key="c.cat + c.file"
                       class="av" :class="{ on: r.avatar.pick === i, weak: c.weak }"
@@ -329,23 +330,23 @@ async function apply() {
                 <Icon v-if="r.avatar.pick === i" name="checked" :size="14" class="tick" />
               </button>
               <span v-if="r.avatar.pick == null" class="hint">{{ r.avatar.current
-                ? '未選 —— 維持目前的大頭照' : '未選 —— 不設定大頭照' }}</span>
+                ? t('未選 —— 維持目前的大頭照') : t('未選 —— 不設定大頭照') }}</span>
             </div>
             <div v-else-if="r.avatarSet" class="alias">
-              大頭照已設定（來源 {{ pickedAvatar(r)?.source }}）
+              {{ t('大頭照已設定（來源 {src}）', { src: pickedAvatar(r)?.source }) }}
             </div>
             <div v-else-if="r.written && pickedAvatar(r)" class="alias">
-              大頭照沒有設定：查詢之後大頭照已經被改過，不覆蓋
+              {{ t('大頭照沒有設定：查詢之後大頭照已經被改過，不覆蓋') }}
             </div>
           </div>
         </div>
 
         <div v-if="done" class="donebox">
-          寫入完成：{{ done.written.length }} 位
+          {{ t('寫入完成：{n} 位', { n: done.written.length }) }}
           <span v-if="done.errors.length" class="err">
-            ，{{ done.errors.length }} 位失敗</span>
+            {{ t('，{n} 位失敗', { n: done.errors.length }) }}</span>
           <div v-if="done.untranslated?.length" class="hint">
-            未收錄中文翻譯（原樣寫入）：{{ done.untranslated.join('、') }}
+            {{ t('未收錄中文翻譯（原樣寫入）：') }}{{ done.untranslated.join(t('、')) }}
           </div>
         </div>
       </div>

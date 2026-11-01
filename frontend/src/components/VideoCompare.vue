@@ -13,12 +13,14 @@
 import { ref, watch, nextTick, onBeforeUnmount } from 'vue'
 import { echoGuard, driftAction } from '../syncplay'
 import Icon from './Icon.vue'
+import { t } from '../i18n'
 
 const props = defineProps({
   leftSrc: { type: String, required: true },
   rightSrc: { type: String, required: true },
-  leftLabel: { type: String, default: '原始' },
-  rightLabel: { type: String, default: '之後' },
+  // empty means 原始／之後, translated where shown
+  leftLabel: { type: String, default: '' },
+  rightLabel: { type: String, default: '' },
   // 'metadata' for full-length files (do not pull gigabytes), 'auto' for the
   // short preview clips, where buffering both up front is what makes starting
   // together look instant
@@ -147,26 +149,26 @@ onBeforeUnmount(() => {
   <div class="cmp">
     <div class="syncbar">
       <button class="btn small ib" @click="bothPlay">
-        <Icon name="play" :size="13" /> 一起播放</button>
-      <button class="mini" @click="bothPause">暫停</button>
-      <button class="mini" @click="bothRestart">從頭</button>
-      <label class="ck ib"><input type="checkbox" v-model="syncOn" /> 同步</label>
+        <Icon name="play" :size="13" /> {{ t('一起播放') }}</button>
+      <button class="mini" @click="bothPause">{{ t('暫停') }}</button>
+      <button class="mini" @click="bothRestart">{{ t('從頭') }}</button>
+      <label class="ck ib"><input type="checkbox" v-model="syncOn" /> {{ t('同步') }}</label>
       <span class="spacer"></span>
-      <span class="lab">聲音</span>
-      <button v-for="o in [['left', leftLabel], ['right', rightLabel], ['none','靜音']]"
+      <span class="lab">{{ t('聲音') }}</span>
+      <button v-for="o in [['left', leftLabel || t('原始')], ['right', rightLabel || t('之後')], ['none', t('靜音')]]"
               :key="o[0]" class="mini" :class="{ on: audioFrom === o[0] }"
               @click="audioFrom = o[0]">{{ o[1] }}</button>
     </div>
 
     <div class="pair">
       <div>
-        <div class="cap">{{ leftLabel }}<slot name="left-meta"></slot></div>
+        <div class="cap">{{ leftLabel || t('原始') }}<slot name="left-meta"></slot></div>
         <video ref="left" :src="leftSrc" controls :preload="preload" playsinline
                @play="onPlay" @pause="onPause" @seeked="onSeek"
                @ratechange="onRate" @timeupdate="onTime"></video>
       </div>
       <div>
-        <div class="cap">{{ rightLabel }}<slot name="right-meta"></slot></div>
+        <div class="cap">{{ rightLabel || t('之後') }}<slot name="right-meta"></slot></div>
         <video ref="right" :src="rightSrc" controls :preload="preload" playsinline
                @play="onPlay" @pause="onPause" @seeked="onSeek"
                @ratechange="onRate" @timeupdate="onTime"></video>
@@ -174,10 +176,7 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="hint">
-      同步開著的時候，其中一邊播放／暫停／拖動，另一邊會跟上。跑久了難免有時間差，
-      校正的方式是把落後那邊的<b>播放速度微調 5%</b> 慢慢追上，而不是直接跳 ——
-      跳轉會讓解碼器卡一下，那正是「一直播一下停一下」的原因。
-      想單獨細看某一邊就把「同步」取消。
+      {{ t('同步開著的時候，其中一邊播放／暫停／拖動，另一邊會跟上。跑久了難免有時間差，校正的方式是把落後那邊的') }}<b>{{ t('播放速度微調 5%') }}</b>{{ t('慢慢追上，而不是直接跳 —— 跳轉會讓解碼器卡一下，那正是「一直播一下停一下」的原因。想單獨細看某一邊就把「同步」取消。') }}
     </div>
   </div>
 </template>

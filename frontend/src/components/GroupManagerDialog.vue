@@ -5,6 +5,7 @@ import { applyGroups } from '../groups'
 import { RATIOS, RATIO_KEYS, HOME_SHAPES, HOME_KEYS, usesFolderPoster, viewOf,
          packView } from '../groupview'
 import Icon from './Icon.vue'
+import { t } from '../i18n'
 
 const emit = defineEmits(['close', 'saved'])
 
@@ -47,12 +48,11 @@ function setView(patch) {
 // Only meaningful when a card can show a picture at all.
 const albumHint = computed(() =>
   cur.value.albums
-    ? '每個子資料夾一張封面卡片，點進去看那一組的照片與影片。'
-      + '有照片的子資料夾少於 2 個的角色仍用平鋪。'
-    : '所有子資料夾的照片攤成一片，依排序顯示。')
+    ? t('每個子資料夾一張封面卡片，點進去看那一組的照片與影片。有照片的子資料夾少於 2 個的角色仍用平鋪。')
+    : t('所有子資料夾的照片攤成一片，依排序顯示。'))
 const posterHint = computed(() =>
-  cur.value.poster ? '同目錄下與影片同名的圖片會取代抽幀縮圖；沒有的仍用抽幀。'
-                   : '一律使用抽幀縮圖。')
+  cur.value.poster ? t('同目錄下與影片同名的圖片會取代抽幀縮圖；沒有的仍用抽幀。')
+                   : t('一律使用抽幀縮圖。'))
 
 // The folder cover rides on the shape rather than having its own checkbox:
 // a round tile is small and neutral enough that the person icon reads as
@@ -60,9 +60,8 @@ const posterHint = computed(() =>
 // 89% of characters have no 大頭照, so this is the common case, not an edge.
 const homeHint = computed(() =>
   usesFolderPoster(cur.value.home)
-    ? '沒有大頭照時，改用角色資料夾第一層的封面圖'
-      + '（<資料夾名>_poster、poster、folder、cover），個人資料頁的頭像也一樣。'
-    : '沒有大頭照時顯示人像佔位圖。')
+    ? t('沒有大頭照時，改用角色資料夾第一層的封面圖（<資料夾名>_poster、poster、folder、cover），個人資料頁的頭像也一樣。')
+    : t('沒有大頭照時顯示人像佔位圖。'))
 
 async function load() {
   try {
@@ -77,7 +76,7 @@ async function load() {
     assign.value = a
     if (order.value.length) selected.value = order.value[0]
   } catch (e) {
-    error.value = '載入失敗：' + errText(e)
+    error.value = t('載入失敗：') + errText(e)
   } finally {
     loading.value = false
   }
@@ -85,10 +84,10 @@ async function load() {
 
 // ── group operations ──────────────────────────────────────────────────────
 function addGroup() {
-  const name = prompt('分類名稱：')
+  const name = prompt(t('分類名稱：'))
   if (!name || !name.trim()) return
   const n = name.trim()
-  if (order.value.includes(n)) { alert(`分類「${n}」已存在`); return }
+  if (order.value.includes(n)) { alert(t('分類「{name}」已存在', { name: n })); return }
   order.value.push(n)
   groups.value[n] = []
   selected.value = n
@@ -97,10 +96,10 @@ function addGroup() {
 function renameGroup() {
   if (!selected.value) return
   const old = selected.value
-  const name = prompt('新名稱：', old)
+  const name = prompt(t('新名稱：'), old)
   if (!name || !name.trim() || name === old) return
   const n = name.trim()
-  if (order.value.includes(n)) { alert(`分類「${n}」已存在`); return }
+  if (order.value.includes(n)) { alert(t('分類「{name}」已存在', { name: n })); return }
   order.value[order.value.indexOf(old)] = n
   groups.value[n] = groups.value[old] || []
   delete groups.value[old]
@@ -118,8 +117,8 @@ function deleteGroup() {
   if (!selected.value) return
   const g = selected.value
   const members = groups.value[g] || []
-  let msg = `刪除分類「${g}」？`
-  if (members.length) msg += `\n\n此分類下的 ${members.length} 個角色將移至「未分類」`
+  let msg = t('刪除分類「{name}」？', { name: g })
+  if (members.length) msg += '\n\n' + t('此分類下的 {n} 個角色將移至「未分類」', { n: members.length })
   if (!confirm(msg)) return
   order.value.splice(order.value.indexOf(g), 1)
   delete groups.value[g]
@@ -157,7 +156,7 @@ async function save() {
     emit('saved')
     emit('close')
   } catch (e) {
-    alert('儲存失敗：' + errText(e))
+    alert(t('儲存失敗：') + errText(e))
   }
 }
 
@@ -168,78 +167,78 @@ onMounted(load)
   <div class="modal" @click.self="emit('close')">
     <div class="dlg">
       <div class="dhead">
-        <span class="ib"><Icon name="tags" :size="16" /> 管理分類</span>
+        <span class="ib"><Icon name="tags" :size="16" /> {{ t('管理分類') }}</span>
         <button class="btn ghost" @click="emit('close')"><Icon name="close" :size="14" /></button>
       </div>
 
-      <div v-if="loading" class="msg">載入中…</div>
+      <div v-if="loading" class="msg">{{ t('載入中…') }}</div>
       <div v-else-if="error" class="msg err">{{ error }}</div>
       <div v-else class="body">
         <!-- left: group list -->
         <div class="left">
-          <div class="lab">分類列表</div>
+          <div class="lab">{{ t('分類列表') }}</div>
           <div class="glist">
             <div v-for="g in order" :key="g" class="gitem"
                  :class="{ on: selected === g }" @click="selected = g">
               {{ g }}
               <span class="cnt">{{ (Object.values(assign).filter(x => x === g)).length }}</span>
             </div>
-            <div v-if="!order.length" class="none">尚無分類</div>
+            <div v-if="!order.length" class="none">{{ t('尚無分類') }}</div>
           </div>
           <div class="gbtns">
-            <button class="btn ghost ib" @click="addGroup"><Icon name="plus" :size="13" /> 新增</button>
-            <button class="btn ghost ib" :disabled="!selected" @click="renameGroup"><Icon name="pencil" :size="13" /> 重命名</button>
-            <button class="btn ghost ib" :disabled="!selected" @click="deleteGroup"><Icon name="trash" :size="13" /> 刪除</button>
-            <button class="btn ghost ib" :disabled="!selected" @click="move(-1)"><Icon name="up" :size="13" /> 上移</button>
-            <button class="btn ghost ib" :disabled="!selected" @click="move(1)"><Icon name="down" :size="13" /> 下移</button>
+            <button class="btn ghost ib" @click="addGroup"><Icon name="plus" :size="13" /> {{ t('新增') }}</button>
+            <button class="btn ghost ib" :disabled="!selected" @click="renameGroup"><Icon name="pencil" :size="13" /> {{ t('重新命名') }}</button>
+            <button class="btn ghost ib" :disabled="!selected" @click="deleteGroup"><Icon name="trash" :size="13" /> {{ t('刪除') }}</button>
+            <button class="btn ghost ib" :disabled="!selected" @click="move(-1)"><Icon name="up" :size="13" /> {{ t('上移') }}</button>
+            <button class="btn ghost ib" :disabled="!selected" @click="move(1)"><Icon name="down" :size="13" /> {{ t('下移') }}</button>
           </div>
         </div>
 
         <!-- middle: how the selected group is displayed -->
         <div class="mid">
-          <div class="lab">顯示方式</div>
-          <div v-if="!selected" class="none">先選一個分類</div>
+          <div class="lab">{{ t('顯示方式') }}</div>
+          <div v-if="!selected" class="none">{{ t('先選一個分類') }}</div>
           <div v-else class="vbox">
             <div class="gname" :title="selected">{{ selected }}</div>
 
-            <div class="sub">點進角色後顯示的分頁</div>
+            <div class="sub">{{ t('點進角色後顯示的分頁') }}</div>
             <label class="ck"><input type="checkbox" :checked="cur.videos"
                      @change="setView({ videos: $event.target.checked })" />
-              <Icon name="film" :size="13" /> 影片</label>
+              <Icon name="film" :size="13" /> {{ t('影片') }}</label>
             <label class="ck"><input type="checkbox" :checked="cur.profile"
                      @change="setView({ profile: $event.target.checked })" />
-              <Icon name="profile" :size="13" /> 個人資料</label>
+              <Icon name="profile" :size="13" /> {{ t('個人資料') }}</label>
             <!-- No "you must keep one" warning: setView turns the other one
                  back on instead, so the state can never be reached. -->
 
-            <div class="sub" :class="{ off: !cur.videos }">影片卡片比例</div>
+            <div class="sub" :class="{ off: !cur.videos }">{{ t('影片卡片比例') }}</div>
             <select :value="cur.ratio" :disabled="!cur.videos"
                     @change="setView({ ratio: $event.target.value })">
               <option v-for="k in RATIO_KEYS" :key="k" :value="k">
-                {{ RATIOS[k].label }}</option>
+                {{ t(RATIOS[k].label) }}</option>
             </select>
 
             <label class="ck" :class="{ off: !cur.videos }">
               <input type="checkbox" :checked="cur.poster" :disabled="!cur.videos"
                      @change="setView({ poster: $event.target.checked })" />
-              優先使用同名圖片</label>
+              {{ t('優先使用同名圖片') }}</label>
             <div class="hint">{{ posterHint }}</div>
 
-            <div class="sub" :class="{ off: !cur.profile }">個人資料照片</div>
+            <div class="sub" :class="{ off: !cur.profile }">{{ t('個人資料照片') }}</div>
             <label class="ck" :class="{ off: !cur.profile }">
               <input type="radio" :checked="!cur.albums" :disabled="!cur.profile"
                      @change="setView({ albums: false })" />
-              全部平鋪</label>
+              {{ t('全部平鋪') }}</label>
             <label class="ck" :class="{ off: !cur.profile }">
               <input type="radio" :checked="cur.albums" :disabled="!cur.profile"
                      @change="setView({ albums: true })" />
-              依子資料夾分成相簿</label>
+              {{ t('依子資料夾分成相簿') }}</label>
             <div class="hint">{{ albumHint }}</div>
 
-            <div class="sub">主頁卡片比例</div>
+            <div class="sub">{{ t('主頁卡片比例') }}</div>
             <select :value="cur.home" @change="setView({ home: $event.target.value })">
               <option v-for="k in HOME_KEYS" :key="k" :value="k">
-                {{ HOME_SHAPES[k].label }}</option>
+                {{ t(HOME_SHAPES[k].label) }}</option>
             </select>
             <div class="hint">{{ homeHint }}</div>
           </div>
@@ -247,13 +246,13 @@ onMounted(load)
 
         <!-- right: character assignment -->
         <div class="right">
-          <div class="lab">角色指派</div>
-          <input v-model="search" placeholder="搜尋角色…" />
+          <div class="lab">{{ t('角色指派') }}</div>
+          <input v-model="search" :placeholder="t('搜尋角色…')" />
           <div class="clist">
             <div v-for="c in filteredChars" :key="c" class="crow">
               <span class="cname" :title="c">{{ c }}</span>
               <select v-model="assign[c]">
-                <option value="">未分類</option>
+                <option value="">{{ t('未分類') }}</option>
                 <option v-for="g in order" :key="g" :value="g">{{ g }}</option>
               </select>
             </div>
@@ -262,8 +261,8 @@ onMounted(load)
       </div>
 
       <div class="foot">
-        <button class="btn" :disabled="loading" @click="save">確定</button>
-        <button class="btn ghost" @click="emit('close')">取消</button>
+        <button class="btn" :disabled="loading" @click="save">{{ t('確定') }}</button>
+        <button class="btn ghost" @click="emit('close')">{{ t('取消') }}</button>
       </div>
     </div>
   </div>

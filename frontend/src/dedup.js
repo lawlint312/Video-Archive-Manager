@@ -7,6 +7,8 @@ import { api, errText } from './api'
 import { patiently } from './jobfollow'
 import { store, setStatus, setBusy } from './store'
 import { fmtProgressLine } from './scanprogress'
+import { t } from './i18n'
+import { ts } from './serverstrings.js'
 
 // ── keep suggestion (ported from the desktop app) ───────────────────────────
 // Walks a ladder of tie-breakers; the first one that isolates a single file
@@ -120,7 +122,7 @@ export async function runScan({ roots, tier2, threshold }) {
   forgetPicking('video')
   d.stopping = false
   d.progress = null
-  setBusy('重複掃描：啟動中…')
+  setBusy(t('重複掃描：啟動中…'))
   try {
     const { job_id } = await api('/api/dedup/scan', {
       method: 'POST',
@@ -129,7 +131,7 @@ export async function runScan({ roots, tier2, threshold }) {
     d.jobId = job_id
     await follow(job_id)
   } catch (e) {
-    d.error = '掃描失敗：' + errText(e)
+    d.error = t('掃描失敗：') + errText(e)
     setStatus(d.error, 'warn')
   } finally {
     d.running = false
@@ -147,10 +149,10 @@ export async function stopScan() {
   d.stopping = true
   try {
     await api(`/api/jobs/${d.jobId}/cancel`, { method: 'POST' })
-    setStatus('已要求停止，正在收尾…', 'info')
+    setStatus(t('已要求停止，正在收尾…'), 'info')
   } catch (e) {
     d.stopping = false
-    setStatus('停止失敗：' + errText(e), 'warn')
+    setStatus(t('停止失敗：') + errText(e), 'warn')
   }
 }
 
@@ -165,11 +167,11 @@ export async function resumeScan(jobId) {
   d.groups = null
   d.partial = false
   d.stopping = false
-  setStatus('接回進行中的重複掃描…', 'info')
+  setStatus(t('接回進行中的重複掃描…'), 'info')
   try {
     await follow(jobId)
   } catch (e) {
-    d.error = '掃描失敗：' + errText(e)
+    d.error = t('掃描失敗：') + errText(e)
   } finally {
     d.running = false
     d.stopping = false
@@ -187,7 +189,7 @@ async function follow(job_id) {
     // under this same id (jobfollow.js), so a failed poll is not the end
     const j = await patiently(() => api(`/api/dedup/job/${job_id}`))
     d.progress = j.progress || null
-    if (j.progress) setBusy('重複掃描：' + fmtProgressLine(j.progress))
+    if (j.progress) setBusy(t('重複掃描：') + fmtProgressLine(j.progress))
     // 'cancelled' carries a real, partial result — the Tier 1 groups it did
     // find are as valid as any. Treating it as a failure would throw away
     // work the user waited for.
@@ -196,15 +198,15 @@ async function follow(job_id) {
       d.groups = j.result.map(toGroup)
       const n = d.groups.length
       setStatus(d.partial
-        ? `重複掃描已停止：目前找到 ${n} 組（只涵蓋已完成的部分）`
-        : (n ? `重複掃描完成：發現 ${n} 組重複`
-             : '重複掃描完成：未發現重複影片'),
+        ? t('重複掃描已停止：目前找到 {n} 組（只涵蓋已完成的部分）', { n })
+        : (n ? t('重複掃描完成：發現 {n} 組重複', { n })
+             : t('重複掃描完成：未發現重複影片')),
         d.partial || n ? 'warn' : 'ok')
       break
     }
     if (j.status === 'error') {
-      d.error = j.error || '掃描失敗'
-      setStatus('重複掃描失敗：' + d.error, 'warn')
+      d.error = ts(j.error) || t('掃描失敗')
+      setStatus(t('重複掃描失敗：') + d.error, 'warn')
       break
     }
   }

@@ -14,12 +14,14 @@
  */
 import { pct, fmtEta, fmtProgressCount } from '../scanprogress'
 import Icon from './Icon.vue'
+import { t } from '../i18n'
+import { ts } from '../serverstrings.js'
 
 const props = defineProps({
   progress: { type: [Object, String], default: null },
   stopping: { type: Boolean, default: false },
   // shown while the server has not sent its first update yet
-  starting: { type: String, default: '啟動中…' },
+  starting: { type: String, default: '' },     // empty: 啟動中…
 })
 defineEmits(['stop'])
 
@@ -32,21 +34,21 @@ const p = () => (props.progress && typeof props.progress === 'object'
     <div class="top">
       <Icon name="spinner" :size="13" class="spin" />
       <template v-if="p()">
-        <span v-if="p().phases > 1" class="ph">階段 {{ p().phase }}/{{ p().phases }}</span>
-        <b>{{ p().label }}</b>
+        <span v-if="p().phases > 1" class="ph">{{ t('階段 {phase}/{phases}', { phase: p().phase, phases: p().phases }) }}</span>
+        <b>{{ ts(p().label) }}</b>
         <span class="cnt">{{ fmtProgressCount(p()) }}</span>
-        <span v-if="p().hint" class="hint">（{{ p().hint }}）</span>
+        <span v-if="p().hint" class="hint">（{{ ts(p().hint) }}）</span>
         <span class="spacer"></span>
         <!-- Only appears once the estimate is worth showing; a placeholder
              like "計算中" would just be a second thing to wait for. -->
         <span v-if="fmtEta(p().eta)" class="eta">{{ fmtEta(p().eta) }}</span>
       </template>
       <template v-else>
-        <span>{{ typeof progress === 'string' && progress ? progress : starting }}</span>
+        <span>{{ typeof progress === 'string' && progress ? progress : starting || t('啟動中…') }}</span>
         <span class="spacer"></span>
       </template>
       <button class="stop" :disabled="stopping" @click="$emit('stop')">
-        {{ stopping ? '停止中…' : '停止' }}
+        {{ stopping ? t('停止中…') : t('停止') }}
       </button>
     </div>
 
@@ -57,10 +59,10 @@ const p = () => (props.progress && typeof props.progress === 'object'
     <div class="foot">
       <span class="name">{{ p()?.name || '' }}</span>
       <span class="spacer"></span>
-      <span class="bg">掃描在背景進行，可關閉此視窗繼續使用</span>
+      <span class="bg">{{ t('掃描在背景進行，可關閉此視窗繼續使用') }}</span>
     </div>
     <div v-if="stopping" class="stopnote">
-      正在收尾：手上這個檔案跑完就停，已經找到的結果會保留。
+      {{ t('正在收尾：手上這個檔案跑完就停，已經找到的結果會保留。') }}
     </div>
   </div>
 </template>

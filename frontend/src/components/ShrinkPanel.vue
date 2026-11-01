@@ -14,6 +14,8 @@ import { fmtSize, fmtDur } from '../dedup'
 import ScopePicker from './ScopePicker.vue'
 import VideoCompare from './VideoCompare.vue'
 import Icon from './Icon.vue'
+import { t, N_ } from '../i18n'
+import { ts } from '../serverstrings.js'
 
 const selected = ref([])
 const scopeOpen = ref(true)
@@ -34,23 +36,24 @@ const showEdgeHelp = ref(false)
 const showMbpsHelp = ref(false)
 
 // measured; see core/shrink.py for how these were produced
+// [percent saved, SSIM] — the words are added where it is shown
 const CRF_TABLE = [
-  { crf: 20, ord: '省 41%，SSIM 0.9939', big: '省 64%，SSIM 0.9935' },
-  { crf: 23, ord: '省 58%，SSIM 0.9923', big: '省 77%，SSIM 0.9918' },
-  { crf: 26, ord: '省 70%，SSIM 0.9902', big: '省 86%，SSIM 0.9898' },
-  { crf: 28, ord: '省 76%，SSIM 0.9884', big: '省 89%，SSIM 0.9882' },
+  { crf: 20, ord: [41, '0.9939'], big: [64, '0.9935'] },
+  { crf: 23, ord: [58, '0.9923'], big: [77, '0.9918'] },
+  { crf: 26, ord: [70, '0.9902'], big: [86, '0.9898'] },
+  { crf: 28, ord: [76, '0.9884'], big: [89, '0.9882'] },
 ]
 const EDGE_TABLE = [
-  { name: '原解析度 crf 26', time: '52 秒', save: '86%' },
-  { name: '縮 1440 crf 23', time: '30 秒', save: '91%' },
-  { name: '縮 1080 crf 26', time: '約 18 秒', save: '約 96%' },
-  { name: 'nvenc（GPU）cq 23', time: '23 秒', save: '只省 37%' },
+  { name: N_('原解析度 crf 26'), sec: 52, save: 86 },
+  { name: N_('縮 1440 crf 23'), sec: 30, save: 91 },
+  { name: N_('縮 1080 crf 26'), sec: 18, save: 96, approx: true },
+  { name: 'nvenc (GPU) cq 23', sec: 23, save: 37, only: true },
 ]
 const EDGES = [
-  { v: 0, label: '原樣（不縮）' },
-  { v: 2560, label: '長邊 2560（1440）' },
-  { v: 1920, label: '長邊 1920（1080）' },
-  { v: 1280, label: '長邊 1280（720）' },
+  { v: 0, label: N_('原樣（不縮）') },
+  { v: 2560, label: N_('長邊 2560（1440）') },
+  { v: 1920, label: N_('長邊 1920（1080）') },
+  { v: 1280, label: N_('長邊 1280（720）') },
 ]
 
 const picked = computed(() =>
@@ -89,15 +92,15 @@ async function scan() {
                              min_mbps: Number(minMbps.value) || 0 }),
     })
     const res = await poll(job_id, '/api/shrink/job', p => {
-      progress.value = p || ''
-      setBusy(p ? '壓縮掃描：' + p : '')
+      progress.value = ts(p) || ''
+      setBusy(p ? t('壓縮掃描：') + ts(p) : '')
     })
     items.value = res
     // nothing pre-selected: this is lossy, every file is a deliberate choice
     chosen.value = new Set()
     scopeOpen.value = false
   } catch (e) {
-    error.value = '掃描失敗：' + errText(e)
+    error.value = t('掃描失敗：') + errText(e)
   } finally { scanning.value = false; setBusy('') }
 }
 
@@ -116,7 +119,7 @@ async function preview(i) {
     })
     sample.value = { ...d, item: i }
   } catch (e) {
-    error.value = '試看失敗：' + errText(e)
+    error.value = t('試看失敗：') + errText(e)
   } finally { sampling.value = false }
 }
 const playUrl = p => `/api/shrink/sample/play?path=${encodeURIComponent(p)}`
@@ -140,7 +143,7 @@ loadPending()
 const pendingSaving = computed(() =>
   pending.value.reduce((n, p) => n + Math.max(0, p.saved), 0))
 
-const KIND = { shrink: '壓縮', repair: '修復', conceal: '遮蔽損壞' }
+const KIND = { shrink: N_('壓縮'), repair: N_('修復'), conceal: N_('遮蔽損壞') }
 
 // For a concealed re-encode: take both players to just before a damaged
 // stretch. Two whole films side by side give no clue where a one-second
@@ -163,9 +166,9 @@ function mmss(t) {
 async function resolvePair(p, action) {
   const what = action === 'keep_produced' ? p.original_name
              : action === 'keep_original' ? p.produced_name : null
-  if (what && !confirm(`永久刪除 ${what}？\n\n此操作無法復原。` +
+  if (what && !confirm(t('永久刪除 {name}？\n\n此操作無法復原。', { name: what }) +
       (action === 'keep_produced' && renameAfter.value
-        ? `\n\n保留的檔案會改名為 ${p.original_name}。` : ''))) return
+        ? '\n\n' + t('保留的檔案會改名為 {name}。', { name: p.original_name }) : ''))) return
   resolving.value = p.produced
   try {
     const r = await api('/api/pairs/resolve', {
@@ -175,10 +178,10 @@ async function resolvePair(p, action) {
     })
     if (compare.value?.produced === p.produced) compare.value = null
     await loadPending()
-    setStatus(r.note || (action === 'keep_both' ? '兩個都保留' : '已處理'),
+    setStatus(ts(r.note) || (action === 'keep_both' ? t('兩個都保留') : t('已處理')),
               r.note ? 'warn' : 'ok')
   } catch (e) {
-    error.value = '處理失敗：' + errText(e)
+    error.value = t('處理失敗：') + errText(e)
   } finally { resolving.value = '' }
 }
 
@@ -190,10 +193,8 @@ const streamUrlFor = p => `/api/stream?path=${encodeURIComponent(p)}`
 async function run() {
   if (!picked.value.length) return
   const n = picked.value.length
-  if (!confirm(`壓縮 ${n} 個檔案？\n\n` +
-               `會另存為新檔（原始檔案不會被刪除或修改）。\n` +
-               `重新編碼是失真的，無法還原成原本的畫質。\n\n` +
-               `粗估可省 ${fmtSize(pickedSaving.value)}。`)) return
+  if (!confirm(t('壓縮 {n} 個檔案？\n\n會另存為新檔（原始檔案不會被刪除或修改）。\n重新編碼是失真的，無法還原成原本的畫質。\n\n粗估可省 {size}。',
+                 { n, size: fmtSize(pickedSaving.value) }))) return
   running.value = true
   error.value = ''
   result.value = null
@@ -209,13 +210,13 @@ async function run() {
       if (p && typeof p === 'object') {
         pct.value = Math.round((p.pct || 0) * 100)
         progress.value = `(${p.index}/${p.total}) ${p.name} — ${pct.value}%`
-        setBusy(`壓縮中 ${progress.value}`)
+        setBusy(t('壓縮中 {progress}', { progress: progress.value }))
       }
     })
     result.value = res
-    setStatus(`壓縮完成：${res.done.length} 個` +
-              (res.saved > 0 ? `，省下 ${fmtSize(res.saved)}` : '') +
-              (res.failed.length ? `，${res.failed.length} 個失敗` : ''),
+    setStatus(t('壓縮完成：{n} 個', { n: res.done.length }) +
+              (res.saved > 0 ? t('，省下 {size}', { size: fmtSize(res.saved) }) : '') +
+              (res.failed.length ? t('，{n} 個失敗', { n: res.failed.length }) : ''),
               res.failed.length ? 'warn' : 'ok')
     const done = new Set(res.done.map(d => d.src))
     items.value = items.value.filter(i => !done.has(i.path))
@@ -227,7 +228,7 @@ async function run() {
     await nextTick()
     pendEl.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   } catch (e) {
-    error.value = '壓縮失敗：' + errText(e)
+    error.value = t('壓縮失敗：') + errText(e)
   } finally { running.value = false; setBusy('') }
 }
 </script>
@@ -236,8 +237,8 @@ async function run() {
   <div class="wrap">
     <button v-if="!scopeOpen" class="scopebar" @click="scopeOpen = true">
       <Icon name="chevronRight" :size="13" />
-      範圍：已選 {{ selected.length }} 個資料夾
-      <span class="chg">重新選擇</span>
+      {{ t('範圍：已選 {n} 個資料夾', { n: selected.length }) }}
+      <span class="chg">{{ t('重新選擇') }}</span>
     </button>
 
     <div v-show="scopeOpen" class="scopewrap">
@@ -245,79 +246,78 @@ async function run() {
                    :disabled="scanning || running"
                    @update:selected="v => selected = v" />
       <div class="opts">
-        <label class="lab">位元率門檻</label>
+        <label class="lab">{{ t('位元率門檻') }}</label>
         <input type="number" v-model.number="minMbps" min="0" max="200"
-               step="1" style="width:78px" /> <span class="unit">Mbps 以上才列出</span>
-        <button class="qmark" :class="{ on: showMbpsHelp }" title="門檻會影響什麼"
+               step="1" style="width:78px" /> <span class="unit">{{ t('Mbps 以上才列出') }}</span>
+        <button class="qmark" :class="{ on: showMbpsHelp }" :title="t('門檻會影響什麼')"
                 @click="showMbpsHelp = !showMbpsHelp">?</button>
         <span class="spacer"></span>
         <button class="btn scanbtn" :disabled="scanning || running || !selected.length"
-                @click="scan">{{ scanning ? '掃描中…' : '掃描' }}</button>
+                @click="scan">{{ scanning ? t('掃描中…') : t('掃描') }}</button>
       </div>
       <div v-if="showMbpsHelp" class="tip">
-        門檻<b>不會讓掃描變快</b> —— 要知道位元率就得逐檔探測，所以每個檔案都會被檢查。
-        它只決定清單有多長。這個庫實測：18 Mbps 約 125 列、6 Mbps 約 977 列、
-        不設限 5,580 列。清單依「粗估可省」排序。
+        {{ t('門檻') }}<b>{{ t('不會讓掃描變快') }}</b>{{ t(' —— 要知道位元率就得逐檔探測，所以每個檔案都會被檢查。它只決定清單有多長。這個庫實測：18 Mbps 約 125 列、6 Mbps 約 977 列、不設限 5,580 列。清單依「粗估可省」排序。') }}
       </div>
     </div>
 
     <div class="opts params">
       <label class="lab">
-        品質 crf
+        {{ t('品質 crf') }}
         <button class="qmark" @click="showCrfHelp = !showCrfHelp">?</button>
       </label>
       <select v-model.number="crf" :disabled="running" style="width:70px">
         <option v-for="c in [20,23,26,28]" :key="c" :value="c">{{ c }}</option>
       </select>
-      <span class="unit">數字越大，檔案越小、畫質越低</span>
+      <span class="unit">{{ t('數字越大，檔案越小、畫質越低') }}</span>
       <label class="lab">
-        解析度上限
+        {{ t('解析度上限') }}
         <button class="qmark" @click="showEdgeHelp = !showEdgeHelp">?</button>
       </label>
       <select v-model.number="maxEdge" :disabled="running" style="width:180px">
-        <option v-for="e in EDGES" :key="e.v" :value="e.v">{{ e.label }}</option>
+        <option v-for="e in EDGES" :key="e.v" :value="e.v">{{ t(e.label) }}</option>
       </select>
     </div>
 
     <div v-if="showCrfHelp" class="helptbl">
-      <div class="hh">實測：同一個 crf 在不同來源上畫質幾乎相同，變的只有省多少</div>
+      <div class="hh">{{ t('實測：同一個 crf 在不同來源上畫質幾乎相同，變的只有省多少') }}</div>
       <table>
         <thead>
-          <tr><th>crf</th><th>一般 1080p（6.1 Mbps）</th><th>過度編碼的 4K（52 Mbps）</th></tr>
+          <tr><th>crf</th><th>{{ t('一般 1080p（6.1 Mbps）') }}</th><th>{{ t('過度編碼的 4K（52 Mbps）') }}</th></tr>
         </thead>
         <tbody>
           <tr v-for="r in CRF_TABLE" :key="r.crf" :class="{ cur: r.crf === crf }">
-            <td>{{ r.crf }}</td><td>{{ r.ord }}</td><td>{{ r.big }}</td>
+            <td>{{ r.crf }}</td>
+            <td>{{ t('省 {pct}%，SSIM {ssim}', { pct: r.ord[0], ssim: r.ord[1] }) }}</td>
+            <td>{{ t('省 {pct}%，SSIM {ssim}', { pct: r.big[0], ssim: r.big[1] }) }}</td>
           </tr>
         </tbody>
       </table>
       <div class="hn">
-        SSIM 1.000 表示與原片無異，0.98 以上一般肉眼看不出差別。
-        因為 crf 是<b>品質目標</b>而不是壓縮率目標，所以一個值可以走遍全庫。
+        {{ t('SSIM 1.000 表示與原片無異，0.98 以上一般肉眼看不出差別。因為 crf 是') }}<b>{{ t('品質目標') }}</b>{{ t('而不是壓縮率目標，所以一個值可以走遍全庫。') }}
       </div>
     </div>
 
     <div v-if="showEdgeHelp" class="helptbl">
-      <div class="hh">實測（4K60 影片的 30 秒切片）</div>
+      <div class="hh">{{ t('實測（4K60 影片的 30 秒切片）') }}</div>
       <table>
         <thead>
-          <tr><th>設定</th><th>耗時</th><th>省下</th></tr>
+          <tr><th>{{ t('設定') }}</th><th>{{ t('耗時') }}</th><th>{{ t('省下') }}</th></tr>
         </thead>
         <tbody>
-          <tr v-for="r in EDGE_TABLE" :key="r.name"><td>{{ r.name }}</td>
-            <td>{{ r.time }}</td><td>{{ r.save }}</td></tr>
+          <tr v-for="r in EDGE_TABLE" :key="r.name"><td>{{ t(r.name) }}</td>
+            <td>{{ r.approx ? t('約 {n} 秒', { n: r.sec }) : t('{n} 秒', { n: r.sec }) }}</td>
+            <td>{{ r.only ? t('只省 {n}%', { n: r.save }) : r.approx ? t('約 {n}%', { n: r.save }) : r.save + '%' }}</td></tr>
         </tbody>
       </table>
       <div class="hn">
-        表裡的 nvenc 是說明<b>為什麼沒有 GPU 選項</b>：它快兩三倍，但省下的空間不到一半，
-        而這個功能的目的就是省空間。降幀率也試過，60→30 fps 省不到 1%，所以也沒有這個選項。
+        {{ t('表裡的 nvenc 是說明') }}<b>{{ t('為什麼沒有 GPU 選項') }}</b>{{ t('：它快兩三倍，但省下的空間不到一半，而這個功能的目的就是省空間。降幀率也試過，60→30 fps 省不到 1%，所以也沒有這個選項。') }}
       </div>
     </div>
 
     <div v-if="scanning || running" class="prog">
       <Icon name="spinner" :size="13" class="spin" /> {{ progress }}
-      <span class="bg">{{ running ? '壓縮進行中，無法關閉此視窗'
-                                  : '可關閉此視窗，但掃描結果不會保留' }}</span>
+      <span class="bg">{{ running ? t('壓縮進行中，無法關閉此視窗')
+                                  : t('可關閉此視窗，但掃描結果不會保留') }}</span>
     </div>
     <div v-if="running" class="bar"><div class="fill" :style="{ width: pct + '%' }"></div></div>
     <div v-if="error" class="err">{{ error }}</div>
@@ -325,14 +325,14 @@ async function run() {
     <!-- before / after -->
     <div v-if="sample" class="sample">
       <div class="shead">
-        <b>試看</b> · {{ sample.item.name }} · 從 {{ fmtDur(sample.at) }} 起 {{ sample.seconds }} 秒
+        <b>{{ t('試看') }}</b> · {{ sample.item.name }} · {{ t('從 {at} 起 {n} 秒', { at: fmtDur(sample.at), n: sample.seconds }) }}
         <span class="spacer"></span>
-        <button class="lnk" @click="sample = null">收起</button>
+        <button class="lnk" @click="sample = null">{{ t('收起') }}</button>
       </div>
 
       <VideoCompare :left-src="playUrl(sample.before)"
                     :right-src="playUrl(sample.after)"
-                    left-label="原始" right-label="壓縮後" preload="auto">
+                    :left-label="t('原始')" :right-label="t('壓縮後')" preload="auto">
         <template #left-meta> · {{ fmtSize(sample.before_size) }} ·
           {{ sample.width }}×{{ sample.height }}</template>
         <template #right-meta> · {{ fmtSize(sample.after_size) }} ·
@@ -340,10 +340,10 @@ async function run() {
       </VideoCompare>
 
       <div class="verdict">
-        這一段實際省下 <b>{{ Math.round(sample.saved * 100) }}%</b> ——
-        照這個比例，整支片會從 {{ fmtSize(sample.item.size) }} 變成約
-        <b>{{ fmtSize(sample.projected_size) }}</b>。
-        <span class="dim">（這是真的編出來的數字；清單上的「粗估」只夠用來排序）</span>
+        {{ t('這一段實際省下') }} <b>{{ Math.round(sample.saved * 100) }}%</b>
+        {{ t('—— 照這個比例，整支片會從 {size} 變成約', { size: fmtSize(sample.item.size) }) }}
+        <b>{{ fmtSize(sample.projected_size) }}</b>{{ t('。') }}
+        <span class="dim">{{ t('（這是真的編出來的數字；清單上的「粗估」只夠用來排序）') }}</span>
       </div>
     </div>
 
@@ -356,40 +356,39 @@ async function run() {
     <div v-if="result" class="done">
       <button class="doneline ib" @click="doneOpen = !doneOpen">
         <Icon name="check" :size="15" />
-        完成 {{ result.done.length }} 個<template v-if="result.saved > 0">
-          · 省下 {{ fmtSize(result.saved) }}</template>
+        {{ t('完成 {n} 個', { n: result.done.length }) }}<template v-if="result.saved > 0">
+          · {{ t('省下 {size}', { size: fmtSize(result.saved) }) }}</template>
         <span v-if="result.done.length" class="lnk">
-          {{ doneOpen ? '收起明細' : '展開明細' }}</span>
+          {{ doneOpen ? t('收起明細') : t('展開明細') }}</span>
       </button>
       <template v-if="doneOpen">
         <div v-for="d in result.done" :key="d.dst" class="okrow">
           {{ d.name }} — {{ fmtSize(d.before) }} → {{ fmtSize(d.after) }}
-          （省 {{ Math.round(d.ratio * 100) }}%）；原始檔案已保留
+          {{ t('（省 {n}%）；原始檔案已保留', { n: Math.round(d.ratio * 100) }) }}
         </div>
       </template>
       <div v-for="f in result.failed" :key="f.path" class="failrow">
-        {{ f.path.split(/[\\/]/).pop() }} — {{ f.error }}
+        {{ f.path.split(/[\\/]/).pop() }} — {{ ts(f.error) }}
       </div>
     </div>
 
     <div v-if="items && !scanning && !scopeOpen" class="results">
       <div v-if="!items.length" class="empty ib">
-        <Icon name="check" :size="15" /> 這個範圍內沒有位元率達到
-        {{ minMbps }} Mbps 的檔案。把門檻調低可以看到更多。
+        <Icon name="check" :size="15" /> {{ t('這個範圍內沒有位元率達到 {n} Mbps 的檔案。把門檻調低可以看到更多。', { n: minMbps }) }}
       </div>
       <template v-else>
         <div class="shead">
-          共 {{ items.length }} 個候選 · 已選 <b>{{ picked.length }}</b>
-          <template v-if="picked.length"> · 粗估可省 {{ fmtSize(pickedSaving) }}</template>
+          {{ t('共 {n} 個候選', { n: items.length }) }} · {{ t('已選') }} <b>{{ picked.length }}</b>
+          <template v-if="picked.length"> · {{ t('粗估可省 {size}', { size: fmtSize(pickedSaving) }) }}</template>
           <span class="spacer"></span>
-          <button class="lnk" @click="setAll(true)">全選</button>
-          <button class="lnk" @click="setAll(false)">全不選</button>
+          <button class="lnk" @click="setAll(true)">{{ t('全選') }}</button>
+          <button class="lnk" @click="setAll(false)">{{ t('全不選') }}</button>
         </div>
         <div class="hdr">
           <span class="cb"></span><span class="c1">Mbps</span>
-          <span class="c2">解析度</span><span class="c3">時長</span>
-          <span class="c4">大小</span><span class="c5">粗估可省</span>
-          <span class="fn">檔名</span><span class="c6"></span>
+          <span class="c2">{{ t('解析度') }}</span><span class="c3">{{ t('時長') }}</span>
+          <span class="c4">{{ t('大小') }}</span><span class="c5">{{ t('粗估可省') }}</span>
+          <span class="fn">{{ t('檔名') }}</span><span class="c6"></span>
         </div>
         <label v-for="i in items" :key="i.path" class="row">
           <input type="checkbox" class="cb" :checked="chosen.has(i.path)"
@@ -402,7 +401,7 @@ async function run() {
           <span class="fn" :title="i.path">{{ i.name }}</span>
           <button class="c6 lnk" :disabled="sampling || running"
                   @click.prevent="preview(i)">
-            {{ sampling ? '…' : '試看' }}</button>
+            {{ sampling ? '…' : t('試看') }}</button>
         </label>
       </template>
     </div>
@@ -410,9 +409,9 @@ async function run() {
     <div v-if="items && items.length && !scopeOpen" class="foot">
       <button class="btn" :disabled="!picked.length || running" @click="run">
         <Icon name="refresh" :size="14" />
-        {{ running ? '壓縮中…' : `壓縮這 ${picked.length} 個` }}
+        {{ running ? t('壓縮中…') : t('壓縮這 {n} 個', { n: picked.length }) }}
       </button>
-      <span class="dim">另存為新檔，原始檔案不會被刪除或修改</span>
+      <span class="dim">{{ t('另存為新檔，原始檔案不會被刪除或修改') }}</span>
     </div>
 
     <!-- Waiting on a decision. Survives closing the dialog on purpose: a batch
@@ -422,20 +421,20 @@ async function run() {
     <div v-if="pending.length" ref="pendEl" class="pend">
       <div class="phead">
         <Icon name="wrench" :size="13" />
-        <b>待決定：{{ pending.length }} 組</b>
-        <span class="dim">刪掉原檔可再收回 {{ fmtSize(pendingSaving) }}</span>
+        <b>{{ t('待決定：{n} 組', { n: pending.length }) }}</b>
+        <span class="dim">{{ t('刪掉原檔可再收回 {size}', { size: fmtSize(pendingSaving) }) }}</span>
         <span class="spacer"></span>
         <label class="ck ib"><input type="checkbox" v-model="renameAfter" />
-          保留新檔時改回原本的檔名</label>
+          {{ t('保留新檔時改回原本的檔名') }}</label>
       </div>
       <div class="pnote">
-        這些是「壓縮」「修復」和「遮蔽損壞」產生的新檔，兩個版本現在都在。
-        <b>看過再決定</b> —— 刪除是永久的。
+        {{ t('這些是「壓縮」「修復」和「遮蔽損壞」產生的新檔，兩個版本現在都在。') }}
+        <b>{{ t('看過再決定') }}</b>{{ t(' —— 刪除是永久的。') }}
       </div>
 
       <div v-for="p in pending" :key="p.produced" class="prow">
         <div class="pline">
-          <span class="tagk" :class="p.kind">{{ KIND[p.kind] || p.kind }}</span>
+          <span class="tagk" :class="p.kind">{{ KIND[p.kind] ? t(KIND[p.kind]) : p.kind }}</span>
           <span class="pn" :title="p.original">{{ p.original_name }}</span>
           <span class="arrow">→</span>
           <span class="pn new" :title="p.produced">{{ p.produced_name }}</span>
@@ -443,48 +442,45 @@ async function run() {
           <span class="dim">{{ fmtSize(p.original_size) }} →
             {{ fmtSize(p.produced_size) }}</span>
           <span :class="p.saved > 0 ? 'save' : 'grow'">
-            {{ p.saved > 0 ? '省' : '多' }} {{ fmtSize(Math.abs(p.saved)) }}</span>
+            {{ p.saved > 0 ? t('省 {size}', { size: fmtSize(p.saved) }) : t('多 {size}', { size: fmtSize(-p.saved) }) }}</span>
         </div>
         <div class="pline sub">
           <span v-if="p.kind === 'shrink'" class="dim">crf {{ p.crf }}<template
-            v-if="p.max_edge"> · 長邊 {{ p.max_edge }}</template></span>
+            v-if="p.max_edge"> · {{ t('長邊 {n}', { n: p.max_edge }) }}</template></span>
           <span v-else-if="p.kind === 'conceal'" class="dim ib regs">
-            損壞處：<template v-if="(p.regions || []).length">
+            {{ t('損壞處：') }}<template v-if="(p.regions || []).length">
               <button v-for="(g, gi) in p.regions.slice(0, 8)" :key="gi" class="chipbtn"
-                      :title="`兩邊一起跳到 ${mmss(g.start)} 前 ${LEAD_IN} 秒`"
+                      :title="t('兩邊一起跳到 {time} 前 {n} 秒', { time: mmss(g.start), n: LEAD_IN })"
                       @click="jumpTo(p, g)">{{ span(g) }}</button>
-              <template v-if="p.regions.length > 8">…還有 {{ p.regions.length - 8 }} 處</template>
-            </template><template v-else>找不到位置</template>
+              <template v-if="p.regions.length > 8">{{ t('…還有 {n} 處', { n: p.regions.length - 8 }) }}</template>
+            </template><template v-else>{{ t('找不到位置') }}</template>
           </span>
-          <span v-else class="dim">丟掉 {{ p.dropped }} 段 · 約損失
-            {{ p.lost_seconds }} 秒</span>
+          <span v-else class="dim">{{ t('丟掉 {n} 段 · 約損失 {sec} 秒', { n: p.dropped, sec: p.lost_seconds }) }}</span>
           <span class="spacer"></span>
           <button class="mini" :disabled="resolving === p.produced"
                   @click="openCompare(p)">
-            {{ compare && compare.produced === p.produced ? '收起對照' : '左右對照' }}</button>
+            {{ compare && compare.produced === p.produced ? t('收起對照') : t('左右對照') }}</button>
           <button class="mini" :disabled="resolving === p.produced"
-                  @click="resolvePair(p, 'keep_produced')">留新檔</button>
+                  @click="resolvePair(p, 'keep_produced')">{{ t('留新檔') }}</button>
           <button class="mini" :disabled="resolving === p.produced"
-                  @click="resolvePair(p, 'keep_original')">留原檔</button>
+                  @click="resolvePair(p, 'keep_original')">{{ t('留原檔') }}</button>
           <button class="mini" :disabled="resolving === p.produced"
-                  @click="resolvePair(p, 'keep_both')">兩個都留</button>
+                  @click="resolvePair(p, 'keep_both')">{{ t('兩個都留') }}</button>
         </div>
 
         <div v-if="compare && compare.produced === p.produced" class="pcmp">
           <VideoCompare :ref="el => cmp = el" :left-src="streamUrlFor(p.original)"
                         :right-src="streamUrlFor(p.produced)"
-                        left-label="原檔" right-label="新檔">
+                        :left-label="t('原檔')" :right-label="t('新檔')">
             <template #left-meta> · {{ fmtSize(p.original_size) }}</template>
             <template #right-meta> · {{ fmtSize(p.produced_size) }}</template>
           </VideoCompare>
           <div v-if="p.kind === 'conceal'" class="cmpnote">
-            點上面的<b>損壞處</b>時間，兩邊會一起跳到那裡的前 {{ LEAD_IN }} 秒開始播。
-            左邊原檔播到損壞處<b>可能直接停住</b> —— 那正是要修的問題；右邊應該能一路播過去，
-            損壞那一兩秒會看到花屏或停頓。
+            {{ t('點上面的') }}<b>{{ t('損壞處') }}</b>{{ t('時間，兩邊會一起跳到那裡的前 {n} 秒開始播。', { n: LEAD_IN }) }}
+            {{ t('左邊原檔播到損壞處') }}<b>{{ t('可能直接停住') }}</b>{{ t(' —— 那正是要修的問題；右邊應該能一路播過去，損壞那一兩秒會看到花屏或停頓。') }}
           </div>
           <div v-else class="cmpnote">
-            這裡比的是<b>完整的檔案</b>，不是試看用的 10 秒樣本 ——
-            決定要不要刪掉原檔，應該看真東西。
+            {{ t('這裡比的是') }}<b>{{ t('完整的檔案') }}</b>{{ t('，不是試看用的 10 秒樣本 —— 決定要不要刪掉原檔，應該看真東西。') }}
           </div>
         </div>
       </div>

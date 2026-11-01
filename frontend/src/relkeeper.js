@@ -10,6 +10,9 @@
  *
  *   node tests/relkeeper.test.mjs
  */
+import { N_ } from './i18n.js'
+
+// `why` and REL_KIND are keys: shown through t()
 const px = f => (f.width || 0) * (f.height || 0)
 
 /** `ladder` picks among several copies of the parent (dedup.suggestKeeper). */
@@ -17,15 +20,15 @@ export function suggestRelKeeper(files, ladder) {
   const live = files.filter(f => !f.deleted)
   const parents = live.filter(f => f.role === 'parent')
   // the original gone: what is left are different films, nothing to choose
-  if (!parents.length) return { keeper: null, certain: true, why: '原片已刪除' }
+  if (!parents.length) return { keeper: null, certain: true, why: N_('原片已刪除') }
   if (live.length < 2) return { keeper: parents[0], certain: true, why: '' }
   const k = parents.length === 1 ? parents[0] : ladder(parents).keeper
-  if (!k) return { keeper: null, certain: false, why: '原片有好幾份，先決定留哪一份' }
+  if (!k) return { keeper: null, certain: false, why: N_('原片有好幾份，先決定留哪一份') }
   if (live.some(f => f.role === 'child' && px(f) > px(k))) {
-    return { keeper: k, certain: false, why: '擷取版的畫質比原片高' }
+    return { keeper: k, certain: false, why: N_('擷取版的畫質比原片高') }
   }
   return { keeper: k, certain: true, why: '' }
 }
 
 /** What each verdict means, for a group's header (core/avbase.py `judge`). */
-export const REL_KIND = { original: '原片 → 擷取', uncut: '完整收錄的總集編' }
+export const REL_KIND = { original: N_('原片 → 擷取'), uncut: N_('完整收錄的總集編') }

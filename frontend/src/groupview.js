@@ -28,10 +28,13 @@ export const DEFAULT = { videos: true, profile: true, ratio: '16:9',
 // Measured over the library (samples of 120 per root, 95% intervals): the
 // Social Media roots are 57–86% portrait video, JAV and 裏番 are 0%. A 9:16
 // video in a 16:9 box shows 32% of the frame; in 4:5 it shows 70%.
+import { N_ } from './i18n.js'
+
+// labels are keys, shown through t()
 export const RATIOS = {
-  '16:9': { css: '16 / 9', min: 350, cap: 420, label: '16:9（寬）' },
-  '4:5':  { css: '4 / 5',  min: 236, cap: 300, label: '4:5（直式，同個人資料）' },
-  '9:16': { css: '9 / 16', min: 200, cap: 260, label: '9:16（直式，手機全幅）' },
+  '16:9': { css: '16 / 9', min: 350, cap: 420, label: N_('16:9（寬）') },
+  '4:5':  { css: '4 / 5',  min: 236, cap: 300, label: N_('4:5（直式，同個人資料）') },
+  '9:16': { css: '9 / 16', min: 200, cap: 260, label: N_('9:16（直式，手機全幅）') },
 }
 
 export const RATIO_KEYS = Object.keys(RATIOS)
@@ -43,10 +46,10 @@ export const RATIO_KEYS = Object.keys(RATIOS)
 // round tile has always been 130px — a 16:9 picture at 130px is only 73px
 // tall, which reads as a strip rather than a card.
 export const HOME_SHAPES = {
-  circle: { css: '1 / 1', min: 130, round: true,  label: '圓形（大頭照）' },
-  '16:9': { css: '16 / 9', min: 210, round: false, label: '16:9（寬）' },
-  '4:5':  { css: '4 / 5',  min: 150, round: false, label: '4:5（直式）' },
-  '9:16': { css: '9 / 16', min: 130, round: false, label: '9:16（直式，手機全幅）' },
+  circle: { css: '1 / 1', min: 130, round: true,  label: N_('圓形（大頭照）') },
+  '16:9': { css: '16 / 9', min: 210, round: false, label: N_('16:9（寬）') },
+  '4:5':  { css: '4 / 5',  min: 150, round: false, label: N_('4:5（直式）') },
+  '9:16': { css: '9 / 16', min: 130, round: false, label: N_('9:16（直式，手機全幅）') },
 }
 
 export const HOME_KEYS = Object.keys(HOME_SHAPES)

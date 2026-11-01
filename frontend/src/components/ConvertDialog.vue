@@ -8,6 +8,8 @@ import { convertWarning } from '../convertwarn'
 import ScopePicker from './ScopePicker.vue'
 import ShrinkPanel from './ShrinkPanel.vue'
 import Icon from './Icon.vue'
+import { t, N_ } from '../i18n'
+import { ts } from '../serverstrings.js'
 import VideoPlayer from './VideoPlayer.vue'
 import DupHistory from './DupHistory.vue'
 import SideDialog from './SideDialog.vue'
@@ -19,9 +21,9 @@ const emit = defineEmits(['close', 'done'])
 // Two separate ticks (轉檔、修復 / 壓縮): open on whichever this account has.
 const tab = ref(can('convert') ? 'convert' : 'shrink')
 const TABS = computed(() => [
-  can('convert') && { key: 'convert', icon: 'refresh', label: '轉檔為 MP4' },
-  can('shrink') && { key: 'shrink', icon: 'gauge', label: '壓縮',
-                      heading: '壓縮（降低畫質換空間）' },
+  can('convert') && { key: 'convert', icon: 'refresh', label: t('轉檔為 MP4') },
+  can('shrink') && { key: 'shrink', icon: 'gauge', label: t('壓縮'),
+                      heading: t('壓縮（降低畫質換空間）') },
 ].filter(Boolean))
 
 const selected = ref([])
@@ -51,15 +53,16 @@ const checkBlanks = ref(false)
 const recheck = ref(false)
 // How many files each check reused this time (only for a scan just run).
 const reusedChecks = ref(null)
-const CHECK_NAMES = { probe: '格式', timing: '影格時序', decode: '完整解碼',
-                      blanks: '錄影中斷' }
+const CHECK_NAMES = { probe: N_('格式'), timing: N_('影格時序'), decode: N_('完整解碼'),
+                      blanks: N_('錄影中斷') }
 const reusedText = computed(() => {
   const c = reusedChecks.value || {}
   return Object.keys(CHECK_NAMES)
     .filter(k => c[k]?.reused)
-    .map(k => `${CHECK_NAMES[k]} ${c[k].reused.toLocaleString()}／${
-      (c[k].reused + c[k].checked).toLocaleString()} 支`)
-    .join('・')
+    .map(k => t('{check} {reused}／{total} 支', { check: t(CHECK_NAMES[k]),
+      reused: c[k].reused.toLocaleString(),
+      total: (c[k].reused + c[k].checked).toLocaleString() }))
+    .join(t('・'))
 })
 // The scan itself is followed outside this dialog (convertscan.js), so the
 // status bar keeps going when it is closed and reopening finds the same scan.
@@ -136,7 +139,7 @@ onMounted(async () => {
       const { scan } = await api('/api/convert/scan/active')
       if (scan && alive && !cs.jobId) {
         showOptions(scan.options)
-        followScan(scan.job_id, scan.options, scan.progress || '掃描中…',
+        followScan(scan.job_id, scan.options, scan.progress || t('掃描中…'),
                    !!scan.stopping)
       }
     } catch { /* an older backend: start a new scan as before */ }
@@ -165,7 +168,7 @@ async function openHistory(id) {
     preselect(items.value)
     showHistory.value = false
     scopeOpen.value = false
-  } catch (e) { error.value = '開啟紀錄失敗：' + errText(e) }
+  } catch (e) { error.value = t('開啟紀錄失敗：') + errText(e) }
 }
 function whenShort(t) {
   if (!t) return ''
@@ -247,22 +250,22 @@ function setAll(list, on) {
 async function poll(jobId, url, onProgress) {
   while (true) {
     await new Promise(r => setTimeout(r, 600))
-    if (!alive) throw { detail: '對話框已關閉' }
+    if (!alive) throw { detail: t('對話框已關閉') }
     const j = await api(`${url}/${jobId}`)
     onProgress(j.progress)
     if (j.status === 'running') continue
-    if (j.status === 'error') throw { detail: j.error || '執行失敗' }
+    if (j.status === 'error') throw { detail: j.error || t('執行失敗') }
     // Anything that is not running and not an error is a finished job. Testing
     // for 'done' by name meant a status this loop had not been taught about
     // (a 'cancelled' was added to the job runner later) would poll for ever
     // with no way out and no message.
-    if (j.result == null) throw { detail: `工作結束但沒有結果（${j.status}）` }
+    if (j.result == null) throw { detail: t('工作結束但沒有結果（{status}）', { status: j.status }) }
     return j.result
   }
 }
 
 async function scan() {
-  if (!selected.value.length) { error.value = '請至少選擇一個資料夾'; return }
+  if (!selected.value.length) { error.value = t('請至少選擇一個資料夾'); return }
   stopped.value = false
   error.value = ''
   items.value = null
@@ -277,16 +280,16 @@ async function scan() {
       method: 'POST',
       body: JSON.stringify({ roots: selected.value, ...options }),
     })
-    followScan(job_id, options, '啟動中…')
+    followScan(job_id, options, t('啟動中…'))
   } catch (e) {
-    error.value = '掃描失敗：' + errText(e)
+    error.value = t('掃描失敗：') + errText(e)
   }
 }
 
 // The followed scan ended while this dialog is open.
 watch(() => cs.result, r => { if (r) applyScan(takeResult()) })
 watch(() => cs.error, e => {
-  if (e) { error.value = '掃描失敗：' + e; cs.error = '' }
+  if (e) { error.value = t('掃描失敗：') + e; cs.error = '' }
 })
 
 function applyScan(out) {
@@ -311,7 +314,7 @@ function applyScan(out) {
 // returns what it found so far.
 async function stopScan() {
   try { await stopScanJob() }
-  catch (e) { error.value = '無法停止：' + errText(e) }
+  catch (e) { error.value = t('無法停止：') + errText(e) }
 }
 
 async function run() {
@@ -343,15 +346,15 @@ async function run() {
         // A retime is three passes, not one encode, so the stage is the only
         // thing that says what it is doing — without it the bar sat at 0%
         // for 83 seconds and then jumped to done.
-        const stage = p.stage ? ` · ${p.stage}` : ''
+        const stage = p.stage ? ` · ${ts(p.stage)}` : ''
         progress.value = `(${p.index}/${p.total}) ${p.name}${stage} — ${pct.value}%`
-        setBusy(`轉檔中 ${progress.value}`)
+        setBusy(t('轉檔中 {progress}', { progress: progress.value }))
       }
     })
     result.value = res
-    setStatus(`轉檔完成：${res.converted.length} 個成功` +
-              (res.failed.length ? `，${res.failed.length} 個失敗` : '') +
-              (res.saved > 0 ? `，省下 ${fmtSize(res.saved)}` : ''),
+    setStatus(t('轉檔完成：{n} 個成功', { n: res.converted.length }) +
+              (res.failed.length ? t('，{n} 個失敗', { n: res.failed.length }) : '') +
+              (res.saved > 0 ? t('，省下 {size}', { size: fmtSize(res.saved) }) : ''),
               res.failed.length ? 'warn' : 'ok')
     // drop the finished rows so a second run does not offer them again
     const done = new Set(res.converted.map(c => c.src))
@@ -359,7 +362,7 @@ async function run() {
     chosen.value = new Set([...chosen.value].filter(p => !done.has(p)))
     emit('done')
   } catch (e) {
-    error.value = '轉檔失敗：' + errText(e)
+    error.value = t('轉檔失敗：') + errText(e)
   } finally { running.value = false; setBusy('') }
 }
 
@@ -371,24 +374,21 @@ function fmtLen(sec) {
   return h ? `${h}:${p(m)}:${p(s)}` : `${m}:${p(s)}`
 }
 
-function label(a) {
-  return a === 'remux' ? '換殼'
-       : a === 'remux_audio' ? '換殼＋音訊'
-       : a === 'reencode' ? '重編碼'
-       : a === 'repair' ? '修復'
-       : a === 'retime' ? '修正時序'
-       : a === 'audiofix' ? '修復聲音'
-       : a === 'gapfix' ? '修復斷訊'
-       : a === 'gapcut' ? '去除空白'
-       : a === 'conceal' ? '遮蔽損壞'
-       : a === 'damaged' ? '損壞' : '略過'
+const ACTIONS = {
+  remux: N_('換殼'), remux_audio: N_('換殼＋音訊'), reencode: N_('重編碼'),
+  repair: N_('修復'), retime: N_('修正時序'), audiofix: N_('修復聲音'),
+  gapfix: N_('修復斷訊'), gapcut: N_('去除空白'), conceal: N_('遮蔽損壞'),
+  damaged: N_('損壞'),
 }
+function label(a) { return t(ACTIONS[a] || '略過') }
+// the server's grading, which is also the colour class (.lv輕微 …)
+const DAMAGE = { 輕微: N_('輕微'), 中等: N_('中等'), 嚴重: N_('嚴重') }
 </script>
 
 <template>
   <!-- Locked while converting: closing would lose the progress, and the
        pages share the one running job's state -->
-  <SideDialog title="影片處理" :items="TABS" v-model="tab"
+  <SideDialog :title="t('影片處理')" :items="TABS" v-model="tab"
               :locked="running" width="1300px" height="1000px" pad="16px" @close="emit('close')">
 
       <ShrinkPanel v-if="tab === 'shrink'" />
@@ -400,12 +400,12 @@ function label(a) {
       <div v-if="!scopeOpen && !showHistory" class="barrow">
         <button class="scopebar" @click="scopeOpen = true">
           <Icon name="chevronRight" :size="13" />
-          <template v-if="historyId">歷史紀錄：{{ whenShort(historyAt) }} 的掃描（已處理的不再列出）</template>
-          <template v-else>範圍：已選 {{ selected.length }} 個資料夾</template>
-          <span class="chg">重新選擇</span>
+          <template v-if="historyId">{{ t('歷史紀錄：{time} 的掃描（已處理的不再列出）', { time: whenShort(historyAt) }) }}</template>
+          <template v-else>{{ t('範圍：已選 {n} 個資料夾', { n: selected.length }) }}</template>
+          <span class="chg">{{ t('重新選擇') }}</span>
         </button>
-        <button class="histbtn ib" :disabled="running" title="之前的掃描結果"
-                @click="showHistory = true"><Icon name="history" :size="13" /> 歷史紀錄</button>
+        <button class="histbtn ib" :disabled="running" :title="t('之前的掃描結果')"
+                @click="showHistory = true"><Icon name="history" :size="13" /> {{ t('歷史紀錄') }}</button>
       </div>
       <DupHistory v-if="showHistory" class="histpane" kind="scan"
                   endpoint="/api/convert/history" unit="個" :current="historyId"
@@ -414,10 +414,10 @@ function label(a) {
       <div v-show="scopeOpen && !showHistory" class="scopewrap">
         <div v-if="lastScan && lastScan.remaining && !items" class="lastscan ib">
           <Icon name="history" :size="13" />
-          上次掃描（{{ whenShort(lastScan.at) }}）還有 {{ lastScan.remaining }} 個待處理
-          <button class="lnk" :disabled="scanning" @click="openHistory(lastScan.id)">開啟</button>
+          {{ t('上次掃描（{time}）還有 {n} 個待處理', { time: whenShort(lastScan.at), n: lastScan.remaining }) }}
+          <button class="lnk" :disabled="scanning" @click="openHistory(lastScan.id)">{{ t('開啟') }}</button>
           <span class="spacer"></span>
-          <button class="lnk" :disabled="scanning" @click="showHistory = true">全部歷史紀錄</button>
+          <button class="lnk" :disabled="scanning" @click="showHistory = true">{{ t('全部歷史紀錄') }}</button>
         </div>
         <!-- `remember: false` like both scan dialogs. Convert used to keep the
              selection, and the reasoning for that ("you pick a target and come
@@ -439,7 +439,7 @@ function label(a) {
           <label class="chk">
             <input type="checkbox" v-model="includeMp4"
                    :disabled="scanning || running" />
-            同時檢查 .mp4 是否真的能播（全庫約 3～4 分鐘）
+            {{ t('同時檢查 .mp4 是否真的能播（全庫約 3～4 分鐘）') }}
           </label>
           <!-- A separate switch rather than riding on the one above, because
                they are different errands: that one asks "can the browser
@@ -448,7 +448,7 @@ function label(a) {
           <label class="chk sub" v-if="includeMp4">
             <input type="checkbox" v-model="checkTiming"
                    :disabled="scanning || running" />
-            並檢查影格時序（再慢約 3 倍）
+            {{ t('並檢查影格時序（再慢約 3 倍）') }}
           </label>
           <!-- Independent of the two above: it decodes every video in scope,
                .mp4 or not, because the damaged ones are usually ordinary
@@ -456,64 +456,51 @@ function label(a) {
           <label class="chk">
             <input type="checkbox" v-model="checkDecode"
                    :disabled="scanning || running" />
-            完整解碼檢查，找出畫面損壞的影片（每支約 4 秒，建議只選少數資料夾）
+            {{ t('完整解碼檢查，找出畫面損壞的影片（每支約 4 秒，建議只選少數資料夾）') }}
           </label>
           <label class="chk">
             <input type="checkbox" v-model="checkBlanks"
                    :disabled="scanning || running" />
-            檢查錄影中斷，找出中間一大段沒有畫面也沒有聲音的錄影（每支約 1 秒）
+            {{ t('檢查錄影中斷，找出中間一大段沒有畫面也沒有聲音的錄影（每支約 1 秒）') }}
           </label>
           <label class="chk">
             <input type="checkbox" v-model="recheck"
                    :disabled="scanning || running" />
-            全部重新檢查（不沿用上次的結果）
+            {{ t('全部重新檢查（不沿用上次的結果）') }}
           </label>
           </div>
           <button class="qmark" :class="{ on: help === 'scan' }"
-                  title="這個掃描會做什麼" @click="toggleHelp('scan')">?</button>
+                  :title="t('這個掃描會做什麼')" @click="toggleHelp('scan')">?</button>
           <button class="lnk histlnk ib" :disabled="scanning || running"
-                  title="之前的掃描結果" @click="showHistory = true">
-            <Icon name="history" :size="12" /> 歷史紀錄</button>
+                  :title="t('之前的掃描結果')" @click="showHistory = true">
+            <Icon name="history" :size="12" /> {{ t('歷史紀錄') }}</button>
           <button class="btn scanbtn" :disabled="scanning || running || !selected.length"
-                  @click="scan">{{ scanning ? '掃描中…'
-                    : checkDecode ? '掃描並完整解碼'
-                    : checkBlanks ? '掃描並檢查中斷'
-                    : includeMp4 ? '掃描所有影片' : '掃描非 MP4 檔案' }}</button>
+                  @click="scan">{{ scanning ? t('掃描中…')
+                    : checkDecode ? t('掃描並完整解碼')
+                    : checkBlanks ? t('掃描並檢查中斷')
+                    : includeMp4 ? t('掃描所有影片') : t('掃描非 MP4 檔案') }}</button>
         </div>
         <div v-if="help === 'scan'" class="tip">
-          會列出所選資料夾內所有非 MP4 的影片，並判斷每個檔案能否無損換殼。
-          <br><b>沿用上次的結果</b>：每一種檢查都會記住每支影片的結果，檔案大小與修改時間
-          都沒變就不再重查，直接沿用（有問題的照樣列出來）。重新下載覆蓋過的檔案時間會變，
-          所以會自動重查。勾「全部重新檢查」則這次全部重跑。
+          {{ t('會列出所選資料夾內所有非 MP4 的影片，並判斷每個檔案能否無損換殼。') }}
+          <br><b>{{ t('沿用上次的結果') }}</b>{{ t('：每一種檢查都會記住每支影片的結果，檔案大小與修改時間都沒變就不再重查，直接沿用（有問題的照樣列出來）。重新下載覆蓋過的檔案時間會變，所以會自動重查。勾「全部重新檢查」則這次全部重跑。') }}
           <template v-if="checkDecode">
-            <br><b>完整解碼檢查</b>：把每支影片（不分副檔名）的畫面從頭到尾解碼一次，
-            找出「檔案讀得到、但畫面資料壞掉」的影片 —— 其他檢查只看檔案的外包裝，
-            抓不到這種。聲音也一起解：聲音封包壞掉的影片在瀏覽器裡同樣會卡死，
-            但畫面沒壞，可以修。實測一個 207 支影片的資料夾約 10 分鐘。檢查過且沒變動的檔案
-            會記住結果，下次不再重跑；掃描中可以按「停止」，已檢查的照樣列出。
-            <br>用 CPU 還是 GPU 解碼，跟著<b>設定 → 縮圖表 →「運算方式」</b>：CPU 每支會吃掉
-            5～9 個核心；GPU 只佔不到半個，找出的損壞一樣（實測），但每支多佔
-            150～480 MB 顯示記憶體。GPU 解不了的影片（例如 AV1）會自動改用 CPU。
+            <br><b>{{ t('完整解碼檢查') }}</b>{{ t('：把每支影片（不分副檔名）的畫面從頭到尾解碼一次，找出「檔案讀得到、但畫面資料壞掉」的影片 —— 其他檢查只看檔案的外包裝，抓不到這種。聲音也一起解：聲音封包壞掉的影片在瀏覽器裡同樣會卡死，但畫面沒壞，可以修。實測一個 207 支影片的資料夾約 10 分鐘。檢查過且沒變動的檔案會記住結果，下次不再重跑；掃描中可以按「停止」，已檢查的照樣列出。') }}
+            <br>{{ t('用 CPU 還是 GPU 解碼，跟著') }}<b>{{ t('設定 → 縮圖表 →「運算方式」') }}</b>{{ t('：CPU 每支會吃掉 5～9 個核心；GPU 只佔不到半個，找出的損壞一樣（實測），但每支多佔 150～480 MB 顯示記憶體。GPU 解不了的影片（例如 AV1）會自動改用 CPU。') }}
           </template>
           <template v-if="checkBlanks">
-            <br><b>檢查錄影中斷</b>：直播錄影常有這種情況 —— 主播離線或轉私人秀時，
-            錄影程式沒有停、時間照走，卻收不到任何畫面與聲音，於是中間空了好幾分鐘，
-            播放器停在同一格畫面。檔案本身沒有壞，所以完整解碼檢查抓不到。
-            這個檢查只讀時間索引、不解碼（不分副檔名），找到的可以<b>無損去除空白</b>。
-            畫面停住但聲音還在的不算空白，不會剪。
+            <br><b>{{ t('檢查錄影中斷') }}</b>{{ t('：直播錄影常有這種情況 —— 主播離線或轉私人秀時，錄影程式沒有停、時間照走，卻收不到任何畫面與聲音，於是中間空了好幾分鐘，播放器停在同一格畫面。檔案本身沒有壞，所以完整解碼檢查抓不到。這個檢查只讀時間索引、不解碼（不分副檔名），找到的可以') }}<b>{{ t('無損去除空白') }}</b>{{ t('。畫面停住但聲音還在的不算空白，不會剪。') }}
           </template>
           <template v-if="includeMp4">
-            <br><b>也會檢查 .mp4</b>：副檔名只說明容器，說明不了裡面的編碼 ——
-            例如 mpeg4（Xvid 時代）裝在 .mp4 裡，瀏覽器一樣播不動。這類檔案
-            <b>重編碼後會直接取代原檔</b>（驗證通過才換），因為它得留在同一個檔名上。
+            <br><b>{{ t('也會檢查 .mp4') }}</b>{{ t('：副檔名只說明容器，說明不了裡面的編碼 —— 例如 mpeg4（Xvid 時代）裝在 .mp4 裡，瀏覽器一樣播不動。這類檔案') }}
+            <b>{{ t('重編碼後會直接取代原檔') }}</b>{{ t('（驗證通過才換），因為它得留在同一個檔名上。') }}
           </template>
         </div>
       </div>
 
       <div v-if="scanning || running" class="prog">
-        <Icon name="spinner" :size="13" class="spin" /> {{ scanning ? cs.progress : progress }}
+        <Icon name="spinner" :size="13" class="spin" /> {{ scanning ? ts(cs.progress) : progress }}
         <button v-if="scanning && (checkDecode || checkBlanks)" class="lnk" :disabled="cs.stopping"
-                @click="stopScan">{{ cs.stopping ? '停止中…' : '停止' }}</button>
+                @click="stopScan">{{ cs.stopping ? t('停止中…') : t('停止') }}</button>
         <!-- This used to promise the job continues in the background, copied
              from the duplicate-scan dialog where it is true — that one keeps
              its polling in dedup.js and its state in the store. The converter
@@ -526,8 +513,8 @@ function label(a) {
              background, reopening the dialog while it runs picks it back up,
              and once done it opens from 歷史紀錄. -->
         <span class="bg">{{ running
-          ? '轉檔進行中，無法關閉此視窗'
-          : '可關閉此視窗，掃描會在背景繼續' }}</span>
+          ? t('轉檔進行中，無法關閉此視窗')
+          : t('可關閉此視窗，掃描會在背景繼續') }}</span>
       </div>
       <div v-if="running" class="bar"><div class="fill" :style="{ width: pct + '%' }"></div></div>
       <div v-if="error" class="err">{{ error }}</div>
@@ -535,23 +522,22 @@ function label(a) {
       <!-- result summary -->
       <div v-if="result" class="done">
         <div class="ib"><Icon name="check" :size="15" />
-          完成 {{ result.converted.length }} 個
-          <template v-if="result.saved > 0">· 省下 {{ fmtSize(result.saved) }}</template>
+          {{ t('完成 {n} 個', { n: result.converted.length }) }}
+          <template v-if="result.saved > 0">· {{ t('省下 {size}', { size: fmtSize(result.saved) }) }}</template>
         </div>
         <!-- how much a repair actually cost is only knowable afterwards, so
              it has to be reported here rather than promised up front -->
         <div v-for="c in (result.converted || []).filter(c => c.action === 'repair')"
              :key="c.dst" class="fixrow">
-          {{ c.dst.split(/[\\/]/).pop() }} — 丟掉 {{ c.dropped }} / {{ c.fragments }} 段，
-          約損失 {{ c.lost_seconds }} 秒，成品 {{ fmtDur(c.duration) }}；原始檔案已保留
+          {{ c.dst.split(/[\\/]/).pop() }} — {{ t('丟掉 {n} / {total} 段，約損失 {sec} 秒，成品 {len}；原始檔案已保留',
+            { n: c.dropped, total: c.fragments, sec: c.lost_seconds, len: fmtDur(c.duration) }) }}
         </div>
         <div v-for="c in (result.converted || []).filter(c => c.action === 'conceal')"
              :key="c.dst" class="fixrow">
-          {{ c.dst.split(/[\\/]/).pop() }} — 已另存，原檔保留；
-          到「壓縮」分頁的<b>待決定</b>清單比對後決定留哪個
+          {{ c.dst.split(/[\\/]/).pop() }} — {{ t('已另存，原檔保留；到「壓縮」分頁的') }}<b>{{ t('待決定') }}</b>{{ t('清單比對後決定留哪個') }}
         </div>
         <div v-for="f in result.failed" :key="f.path" class="failrow">
-          {{ f.path.split(/[\\/]/).pop() }} — {{ f.error }}
+          {{ f.path.split(/[\\/]/).pop() }} — {{ ts(f.error) }}
         </div>
       </div>
 
@@ -561,43 +547,43 @@ function label(a) {
            a long result list left the 745-row folder list a visible sliver.
            You are either setting up a run or reviewing the last one. -->
       <div v-if="items && !scanning && !scopeOpen && !showHistory" class="results">
-        <div v-if="stopped" class="partial">已停止：只檢查了部分影片，下面只列出停止前找到的。</div>
+        <div v-if="stopped" class="partial">{{ t('已停止：只檢查了部分影片，下面只列出停止前找到的。') }}</div>
         <div v-if="reusedText" class="reused">
-          沿用上次的檢查結果（檔案沒有變動）：{{ reusedText }}。要全部重跑請勾「全部重新檢查」。
+          {{ t('沿用上次的檢查結果（檔案沒有變動）：{list}。要全部重跑請勾「全部重新檢查」。', { list: reusedText }) }}
         </div>
         <div v-if="!items.length" class="empty ib">
           <Icon name="check" :size="15" />
-          {{ checkDecode ? '所選範圍內沒有需要處理的影片，也沒有發現畫面損壞'
-                         : '所選範圍內沒有非 MP4 的影片' }}</div>
+          {{ checkDecode ? t('所選範圍內沒有需要處理的影片，也沒有發現畫面損壞')
+                         : t('所選範圍內沒有非 MP4 的影片') }}</div>
 
         <template v-else>
           <div class="pickbar">
             <!-- Every group that can be picked has to be in the denominator.
                  It read "已選 1 / 0 個檔案" when only retimeable rows existed. -->
-            已選 <b>{{ picked.length }}</b> / {{ remuxable.length + reencodable.length
+            {{ t('已選') }} <b>{{ picked.length }}</b> {{ t('/ {n} 個檔案', { n: remuxable.length + reencodable.length
               + repairable.length + retimeable.length + audiofixable.length
-              + blankcuttable.length }} 個檔案
+              + blankcuttable.length }) }}
             <template v-if="pickedBytes">· {{ fmtSize(pickedBytes) }}</template>
             <span class="spacer"></span>
             <label v-if="anyReencode" class="crfrow">
-              品質 CRF
+              {{ t('品質 CRF') }}
               <input type="number" v-model.number="crf" min="14" max="35"
                      :disabled="running" style="width:52px" />
-              <span class="mini">（越小越好，20 接近無損）</span>
-              <label class="gpubox"><input type="checkbox" v-model="gpu" :disabled="running" /> 用 GPU</label>
+              <span class="mini">{{ t('（越小越好，20 接近無損）') }}</span>
+              <label class="gpubox"><input type="checkbox" v-model="gpu" :disabled="running" /> {{ t('用 GPU') }}</label>
             </label>
             <button class="btn" :disabled="running || !picked.length" @click="run">
-              {{ running ? '轉檔中…' : '開始轉檔' }}</button>
+              {{ running ? t('轉檔中…') : t('開始轉檔') }}</button>
           </div>
 
           <!-- remuxable -->
           <section v-if="remuxable.length">
             <div class="shead ok">
               <Icon name="check" :size="13" />
-              可無損換殼（{{ remuxable.length }}）— 不重新編碼，畫質完全不變
+              {{ t('可無損換殼（{n}）— 不重新編碼，畫質完全不變', { n: remuxable.length }) }}
               <span class="spacer"></span>
-              <button class="lnk" @click="setAll(remuxable, true)">全選</button>
-              <button class="lnk" @click="setAll(remuxable, false)">全不選</button>
+              <button class="lnk" @click="setAll(remuxable, true)">{{ t('全選') }}</button>
+              <button class="lnk" @click="setAll(remuxable, false)">{{ t('全不選') }}</button>
             </div>
             <label v-for="i in remuxable" :key="i.path" class="row">
               <input type="checkbox" :checked="chosen.has(i.path)"
@@ -607,7 +593,7 @@ function label(a) {
               <span class="col">{{ i.width ? `${i.width}×${i.height}` : '?' }}</span>
               <span class="col">{{ fmtDur(i.duration) }}</span>
               <span class="col">{{ fmtSize(i.size) }}</span>
-              <span class="why">{{ i.reason }}</span>
+              <span class="why">{{ ts(i.reason) }}</span>
             </label>
           </section>
 
@@ -615,10 +601,10 @@ function label(a) {
           <section v-if="reencodable.length">
             <div class="shead warn">
               <Icon name="warn" :size="13" />
-              必須重編碼（{{ reencodable.length }}）— 耗時且畫質有損，原檔一樣會刪除
+              {{ t('必須重編碼（{n}）— 耗時且畫質有損，原檔一樣會刪除', { n: reencodable.length }) }}
               <span class="spacer"></span>
-              <button class="lnk" @click="setAll(reencodable, true)">全選</button>
-              <button class="lnk" @click="setAll(reencodable, false)">全不選</button>
+              <button class="lnk" @click="setAll(reencodable, true)">{{ t('全選') }}</button>
+              <button class="lnk" @click="setAll(reencodable, false)">{{ t('全不選') }}</button>
             </div>
             <label v-for="i in reencodable" :key="i.path" class="row">
               <input type="checkbox" :checked="chosen.has(i.path)"
@@ -628,7 +614,7 @@ function label(a) {
               <span class="col">{{ i.width ? `${i.width}×${i.height}` : '?' }}</span>
               <span class="col">{{ fmtDur(i.duration) }}</span>
               <span class="col">{{ fmtSize(i.size) }}</span>
-              <span class="why">{{ i.reason }}</span>
+              <span class="why">{{ ts(i.reason) }}</span>
             </label>
           </section>
 
@@ -636,23 +622,20 @@ function label(a) {
           <section v-if="repairable.length">
             <div class="shead fix">
               <Icon name="wrench" :size="13" />
-              可嘗試修復（{{ repairable.length }}）— 這些其實是 MP4，只是副檔名不符且有片段損壞
+              {{ t('可嘗試修復（{n}）— 這些其實是 MP4，只是副檔名不符且有片段損壞', { n: repairable.length }) }}
               <span class="spacer"></span>
-              <button class="lnk" @click="setAll(repairable, true)">全選</button>
-              <button class="lnk" @click="setAll(repairable, false)">全不選</button>
+              <button class="lnk" @click="setAll(repairable, true)">{{ t('全選') }}</button>
+              <button class="lnk" @click="setAll(repairable, false)">{{ t('全不選') }}</button>
               <button class="qmark" :class="{ on: help === 'repair' }"
-                      title="說明" @click="toggleHelp('repair')">?</button>
+                      :title="t('說明')" @click="toggleHelp('repair')">?</button>
             </div>
             <div v-if="help === 'repair'" class="note">
-              保留的畫面逐位元組原樣複製，不重編碼。只丟掉讀不出來的片段 ——
-              <b>事前無法知道會丟多少</b>，完成後才報告。
-              <b>原始檔案不會被刪除</b>（跟上面兩種不同），要刪請用「刪除模式」。
+              {{ t('保留的畫面逐位元組原樣複製，不重編碼。只丟掉讀不出來的片段 ——') }}
+              <b>{{ t('事前無法知道會丟多少') }}</b>{{ t('，完成後才報告。') }}
+              <b>{{ t('原始檔案不會被刪除') }}</b>{{ t('（跟上面兩種不同），要刪請用「刪除模式」。') }}
               <br /><br />
-              <b>為什麼要先「複製到本機」？</b>
-              找壞片段是二分搜尋，要把檔案重複讀十幾次。影片碟是機械硬碟（實測約
-              188 MB/s）、C 槽是固態硬碟，先複製一次再讀比較快 ——
-              3.3 GB 的檔：直接讀約 106 秒，先複製約 25 秒（含複製 18 秒）。
-              檔案在本機的 I 槽也一樣，不只 NAS。
+              <b>{{ t('為什麼要先「複製到本機」？') }}</b>
+              {{ t('找壞片段是二分搜尋，要把檔案重複讀十幾次。影片碟是機械硬碟（實測約 188 MB/s）、C 槽是固態硬碟，先複製一次再讀比較快 —— 3.3 GB 的檔：直接讀約 106 秒，先複製約 25 秒（含複製 18 秒）。檔案在本機的 I 槽也一樣，不只 NAS。') }}
             </div>
             <label v-for="i in repairable" :key="i.path" class="row">
               <input type="checkbox" :checked="chosen.has(i.path)"
@@ -660,7 +643,7 @@ function label(a) {
               <span class="tagk fix">{{ label(i.action) }}</span>
               <span class="fn" :title="i.path">{{ i.name }}</span>
               <span class="col">{{ fmtSize(i.size) }}</span>
-              <span class="why">{{ i.reason }}</span>
+              <span class="why">{{ ts(i.reason) }}</span>
             </label>
           </section>
 
@@ -668,19 +651,18 @@ function label(a) {
           <section v-if="retimeable.length">
             <div class="shead ok">
               <Icon name="refresh" :size="13" />
-              可修正影格時序（{{ retimeable.length }}）— 編碼沒問題，但瀏覽器會掉格
+              {{ t('可修正影格時序（{n}）— 編碼沒問題，但瀏覽器會掉格', { n: retimeable.length }) }}
               <span class="spacer"></span>
-              <button class="lnk" @click="setAll(retimeable, true)">全選</button>
-              <button class="lnk" @click="setAll(retimeable, false)">全不選</button>
+              <button class="lnk" @click="setAll(retimeable, true)">{{ t('全選') }}</button>
+              <button class="lnk" @click="setAll(retimeable, false)">{{ t('全不選') }}</button>
               <button class="qmark" :class="{ on: help === 'retime' }"
-                      title="說明" @click="toggleHelp('retime')">?</button>
+                      :title="t('說明')" @click="toggleHelp('retime')">?</button>
             </div>
             <div v-if="help === 'retime'" class="note">
-              這些檔案有 B 影格卻沒有顯示時間表，瀏覽器照解碼順序畫，
-              <b>約一半的影格會被丟掉</b>（29.97fps 實際只剩約 15）。本機播放器
-              自己從位元流重建順序，所以同一個檔在 VLC 很順、在瀏覽器很頓。
-              <b>畫面逐格原樣複製、不重編碼</b>，音畫同步會保留，
-              <b>驗證通過後直接取代原檔</b>。
+              {{ t('這些檔案有 B 影格卻沒有顯示時間表，瀏覽器照解碼順序畫，') }}
+              <b>{{ t('約一半的影格會被丟掉') }}</b>{{ t('（29.97fps 實際只剩約 15）。本機播放器自己從位元流重建順序，所以同一個檔在 VLC 很順、在瀏覽器很頓。') }}
+              <b>{{ t('畫面逐格原樣複製、不重編碼') }}</b>{{ t('，音畫同步會保留，') }}
+              <b>{{ t('驗證通過後直接取代原檔') }}</b>{{ t('。') }}
             </div>
             <label v-for="i in retimeable" :key="i.path" class="row">
               <input type="checkbox" :checked="chosen.has(i.path)"
@@ -688,7 +670,7 @@ function label(a) {
               <span class="tagk ok">{{ label(i.action) }}</span>
               <span class="fn" :title="i.path">{{ i.name }}</span>
               <span class="col">{{ fmtSize(i.size) }}</span>
-              <span class="why">{{ i.reason }}</span>
+              <span class="why">{{ ts(i.reason) }}</span>
             </label>
           </section>
 
@@ -696,23 +678,18 @@ function label(a) {
           <section v-if="audiofixable.length">
             <div class="shead ok">
               <Icon name="refresh" :size="13" />
-              可修復（{{ audiofixable.length }}）— 瀏覽器播到或拖到這裡會卡死
+              {{ t('可修復（{n}）— 瀏覽器播到或拖到這裡會卡死', { n: audiofixable.length }) }}
               <span class="spacer"></span>
-              <button class="lnk" @click="setAll(audiofixable, true)">全選</button>
-              <button class="lnk" @click="setAll(audiofixable, false)">全不選</button>
+              <button class="lnk" @click="setAll(audiofixable, true)">{{ t('全選') }}</button>
+              <button class="lnk" @click="setAll(audiofixable, false)">{{ t('全不選') }}</button>
               <button class="qmark" :class="{ on: help === 'audiofix' }"
-                      title="說明" @click="toggleHelp('audiofix')">?</button>
+                      :title="t('說明')" @click="toggleHelp('audiofix')">?</button>
             </div>
             <div v-if="help === 'audiofix'" class="note">
-              這些影片多半是有<b>斷訊的錄影</b>：斷訊的地方留下了殘缺的畫格或壞掉的聲音封包。
-              VLC 這類播放器遇到會跳過，<b>瀏覽器遇到一個就整個播放器停擺</b>：
-              播到那裡就停，拖進度條也完全沒反應。
-              <br><b>修復斷訊</b>：丟掉每個斷訊前那一格殘缺的畫面（斷訊後都從完整的關鍵影格重新開始，
-              所以不影響後面），其餘<b>原樣複製、不重新編碼</b>；聲音也壞了就順便修。
-              修完會<b>整支完整解碼一次</b>，確定 0 個錯誤才換（需要幾分鐘）。
-              <br><b>修復聲音</b>：影像原樣複製、畫質不變，只把聲音重新編碼（約 192 kbps），
-              壞掉的片段補成靜音，音畫同步保留。
-              <br>兩種都是<b>驗證通過才取代原檔</b>，沒通過就保留原檔。
+              {{ t('這些影片多半是有') }}<b>{{ t('斷訊的錄影') }}</b>{{ t('：斷訊的地方留下了殘缺的畫格或壞掉的聲音封包。VLC 這類播放器遇到會跳過，') }}<b>{{ t('瀏覽器遇到一個就整個播放器停擺') }}</b>{{ t('：播到那裡就停，拖進度條也完全沒反應。') }}
+              <br><b>{{ t('修復斷訊') }}</b>{{ t('：丟掉每個斷訊前那一格殘缺的畫面（斷訊後都從完整的關鍵影格重新開始，所以不影響後面），其餘') }}<b>{{ t('原樣複製、不重新編碼') }}</b>{{ t('；聲音也壞了就順便修。修完會') }}<b>{{ t('整支完整解碼一次') }}</b>{{ t('，確定 0 個錯誤才換（需要幾分鐘）。') }}
+              <br><b>{{ t('修復聲音') }}</b>{{ t('：影像原樣複製、畫質不變，只把聲音重新編碼（約 192 kbps），壞掉的片段補成靜音，音畫同步保留。') }}
+              <br>{{ t('兩種都是') }}<b>{{ t('驗證通過才取代原檔') }}</b>{{ t('，沒通過就保留原檔。') }}
             </div>
             <label v-for="i in audiofixable" :key="i.path" class="row">
               <input type="checkbox" :checked="chosen.has(i.path)"
@@ -721,10 +698,10 @@ function label(a) {
               <span class="fn" :title="i.path">{{ i.name }}</span>
               <span class="col">{{ fmtSize(i.size) }}</span>
               <span class="why">{{ i.action === 'gapfix'
-                ? `斷訊 ${i.gaps} 處、殘缺畫格 ${i.decode_errors} 行` +
-                  (i.audio_errors ? `、壞聲音封包 ${i.audio_errors} 個` : '')
-                : `壞掉的聲音封包 ${i.audio_errors} 個` }}</span>
-              <button class="ib icon" title="播放" @click.prevent="viewing = i">
+                ? t('斷訊 {gaps} 處、殘缺畫格 {lines} 行', { gaps: i.gaps, lines: i.decode_errors }) +
+                  (i.audio_errors ? t('、壞聲音封包 {n} 個', { n: i.audio_errors }) : '')
+                : t('壞掉的聲音封包 {n} 個', { n: i.audio_errors }) }}</span>
+              <button class="ib icon" :title="t('播放')" @click.prevent="viewing = i">
                 <Icon name="play" :size="12" /></button>
             </label>
           </section>
@@ -733,20 +710,17 @@ function label(a) {
           <section v-if="blankcuttable.length">
             <div class="shead ok">
               <Icon name="refresh" :size="13" />
-              錄影中斷（{{ blankcuttable.length }}）— 中間有一大段沒有畫面也沒有聲音
+              {{ t('錄影中斷（{n}）— 中間有一大段沒有畫面也沒有聲音', { n: blankcuttable.length }) }}
               <span class="spacer"></span>
-              <button class="lnk" @click="setAll(blankcuttable, true)">全選</button>
-              <button class="lnk" @click="setAll(blankcuttable, false)">全不選</button>
+              <button class="lnk" @click="setAll(blankcuttable, true)">{{ t('全選') }}</button>
+              <button class="lnk" @click="setAll(blankcuttable, false)">{{ t('全不選') }}</button>
               <button class="qmark" :class="{ on: help === 'gapcut' }"
-                      title="說明" @click="toggleHelp('gapcut')">?</button>
+                      :title="t('說明')" @click="toggleHelp('gapcut')">?</button>
             </div>
             <div v-if="help === 'gapcut'" class="note">
-              錄影程式在直播中斷時沒有停下來，時間照樣往前走，所以檔案裡留下了
-              好幾分鐘<b>完全沒有畫面也沒有聲音</b>的空白，播放時停在同一格畫面。
-              <br><b>去除空白</b>：把空白後面的內容往前接，每一格畫面與聲音都<b>原樣複製、不重新編碼</b>，
-              畫質不變，只是片長變短。只去除 5 秒以上、而且空白後是完整關鍵影格的段落。
-              <br>修完會比對<b>畫格數完全相同</b>、空白確實消失才換；.mp4 會<b>直接取代原檔</b>，
-              其他格式會順便轉成 .mp4 並刪掉原檔。沒通過就保留原檔。
+              {{ t('錄影程式在直播中斷時沒有停下來，時間照樣往前走，所以檔案裡留下了好幾分鐘') }}<b>{{ t('完全沒有畫面也沒有聲音') }}</b>{{ t('的空白，播放時停在同一格畫面。') }}
+              <br><b>{{ t('去除空白') }}</b>{{ t('：把空白後面的內容往前接，每一格畫面與聲音都') }}<b>{{ t('原樣複製、不重新編碼') }}</b>{{ t('，畫質不變，只是片長變短。只去除 5 秒以上、而且空白後是完整關鍵影格的段落。') }}
+              <br>{{ t('修完會比對') }}<b>{{ t('畫格數完全相同') }}</b>{{ t('、空白確實消失才換；.mp4 會') }}<b>{{ t('直接取代原檔') }}</b>{{ t('，其他格式會順便轉成 .mp4 並刪掉原檔。沒通過就保留原檔。') }}
             </div>
             <label v-for="i in blankcuttable" :key="i.path" class="row">
               <input type="checkbox" :checked="chosen.has(i.path)"
@@ -754,9 +728,9 @@ function label(a) {
               <span class="tagk ok">{{ label(i.action) }}</span>
               <span class="fn" :title="i.path">{{ i.name }}</span>
               <span class="col">{{ fmtSize(i.size) }}</span>
-              <span class="why">中斷 {{ i.blanks }} 處、空白 {{ fmtLen(i.removed) }}，
-                去除後 {{ fmtLen(i.kept) }}</span>
-              <button class="ib icon" title="播放" @click.prevent="viewing = i">
+              <span class="why">{{ t('中斷 {n} 處、空白 {gap}，去除後 {kept}',
+                { n: i.blanks, gap: fmtLen(i.removed), kept: fmtLen(i.kept) }) }}</span>
+              <button class="ib icon" :title="t('播放')" @click.prevent="viewing = i">
                 <Icon name="play" :size="12" /></button>
             </label>
           </section>
@@ -765,38 +739,31 @@ function label(a) {
           <section v-if="damaged.length">
             <div class="shead bad">
               <Icon name="warn" :size="13" />
-              畫面損壞（{{ damaged.length }}）— 可重新編碼遮蔽損壞
+              {{ t('畫面損壞（{n}）— 可重新編碼遮蔽損壞', { n: damaged.length }) }}
               <span class="spacer"></span>
-              <button class="lnk" @click="setAll(damaged, true)">全選</button>
-              <button class="lnk" @click="setAll(damaged, false)">全不選</button>
+              <button class="lnk" @click="setAll(damaged, true)">{{ t('全選') }}</button>
+              <button class="lnk" @click="setAll(damaged, false)">{{ t('全不選') }}</button>
               <button class="qmark" :class="{ on: help === 'damaged' }"
-                      title="說明" @click="toggleHelp('damaged')">?</button>
+                      :title="t('說明')" @click="toggleHelp('damaged')">?</button>
             </div>
             <div v-if="help === 'damaged'" class="note">
-              這些影片的<b>畫面資料本身壞了</b>，那一段的影像已經不在檔案裡，沒有辦法還原。
-              瀏覽器播到壞掉的地方會停住，拖進度條跳進去也會卡住。
-              <br><b>遮蔽損壞</b>：整支重新編碼（crf 23），壞掉的格子用附近的畫面補上。
-              損壞那一兩秒<b>仍會看到花屏或停頓</b>，但新檔裡沒有壞資料了，
-              瀏覽器可以正常播放與拖進度條；其餘畫面幾乎不變（實測相似度 0.98～0.995），
-              大小與原檔差不多。720p 約 7 倍速。
-              <br>會<b>另存成 xxx_fix.mp4、原檔保留</b>，修完放進「壓縮」分頁的<b>待決定</b>清單，
-              那裡標出損壞處，點一下左右兩邊一起跳過去比對。
-              <br>損壞太嚴重的（例如好幾分鐘一格都解不出來）修完會變短，驗證會擋下來、不產生新檔。
-              也可以按 ▶ 確認壞在哪裡，用<b>剪輯</b>剪出完好的部分，或在<b>刪除模式</b>刪掉。
-              分級看解碼錯誤的行數：1,000 行以下輕微、1,000～10,000 中等、超過 10,000 嚴重。
+              {{ t('這些影片的') }}<b>{{ t('畫面資料本身壞了') }}</b>{{ t('，那一段的影像已經不在檔案裡，沒有辦法還原。瀏覽器播到壞掉的地方會停住，拖進度條跳進去也會卡住。') }}
+              <br><b>{{ t('遮蔽損壞') }}</b>{{ t('：整支重新編碼（crf 23），壞掉的格子用附近的畫面補上。損壞那一兩秒') }}<b>{{ t('仍會看到花屏或停頓') }}</b>{{ t('，但新檔裡沒有壞資料了，瀏覽器可以正常播放與拖進度條；其餘畫面幾乎不變（實測相似度 0.98～0.995），大小與原檔差不多。720p 約 7 倍速。') }}
+              <br>{{ t('會') }}<b>{{ t('另存成 xxx_fix.mp4、原檔保留') }}</b>{{ t('，修完放進「壓縮」分頁的') }}<b>{{ t('待決定') }}</b>{{ t('清單，那裡標出損壞處，點一下左右兩邊一起跳過去比對。') }}
+              <br>{{ t('損壞太嚴重的（例如好幾分鐘一格都解不出來）修完會變短，驗證會擋下來、不產生新檔。也可以按 ▶ 確認壞在哪裡，用') }}<b>{{ t('剪輯') }}</b>{{ t('剪出完好的部分，或在') }}<b>{{ t('刪除模式') }}</b>{{ t('刪掉。分級看解碼錯誤的行數：1,000 行以下輕微、1,000～10,000 中等、超過 10,000 嚴重。') }}
             </div>
             <label v-for="i in damaged" :key="i.path" class="row">
               <input type="checkbox" :checked="chosen.has(i.path)"
                      :disabled="running" @change="toggle(i)" />
-              <span class="tagk" :class="'lv' + i.damage">{{ i.damage }}</span>
+              <span class="tagk" :class="'lv' + i.damage">{{ DAMAGE[i.damage] ? t(DAMAGE[i.damage]) : i.damage }}</span>
               <span class="fn" :title="i.path">{{ i.name }}</span>
               <span class="col">{{ fmtDur(i.duration) }}</span>
               <span class="col">{{ fmtSize(i.size) }}</span>
-              <span class="why">解碼錯誤 {{ i.decode_errors.toLocaleString() }} 行<template
-                v-if="i.regions && i.regions.length"> · 損壞處 {{ i.regions.slice(0, 3)
-                  .map(span).join('、') }}<template
-                  v-if="i.regions.length > 3"> 等 {{ i.regions.length }} 處</template></template></span>
-              <button class="ib icon" title="播放" @click.prevent="viewing = i">
+              <span class="why">{{ t('解碼錯誤 {n} 行', { n: i.decode_errors.toLocaleString() }) }}<template
+                v-if="i.regions && i.regions.length"> · {{ t('損壞處 {list}', { list: i.regions.slice(0, 3)
+                  .map(span).join(t('、')) }) }}<template
+                  v-if="i.regions.length > 3"> {{ t('等 {n} 處', { n: i.regions.length }) }}</template></template></span>
+              <button class="ib icon" :title="t('播放')" @click.prevent="viewing = i">
                 <Icon name="play" :size="12" /></button>
             </label>
           </section>
@@ -804,11 +771,11 @@ function label(a) {
           <!-- skipped -->
           <section v-if="skipped.length">
             <div class="shead dim">
-              <Icon name="skip" :size="13" /> 略過（{{ skipped.length }}）
+              <Icon name="skip" :size="13" /> {{ t('略過（{n}）', { n: skipped.length }) }}
             </div>
             <div v-for="i in skipped" :key="i.path" class="row dim">
               <span class="fn" :title="i.path">{{ i.name }}</span>
-              <span class="why">{{ i.reason }}</span>
+              <span class="why">{{ ts(i.reason) }}</span>
             </div>
           </section>
         </template>
@@ -819,18 +786,18 @@ function label(a) {
         <VideoPlayer ref="player" :key="viewing.path" :src="streamUrl(viewing.path)"
                      @close="viewing = null" />
         <div v-if="viewing.decode_errors || viewing.audio_errors" class="regbar">
-          <template v-if="locateErr">無法定位損壞處：{{ locateErr }}</template>
+          <template v-if="locateErr">{{ t('無法定位損壞處：') }}{{ locateErr }}</template>
           <template v-else-if="regions === null">
-            <Icon name="spinner" :size="12" class="spin" /> 正在找損壞處（這支是較早檢查的，沒有記下位置，要再解碼一次）…
+            <Icon name="spinner" :size="12" class="spin" /> {{ t('正在找損壞處（這支是較早檢查的，沒有記下位置，要再解碼一次）…') }}
           </template>
-          <template v-else-if="!regions.length">找不到損壞處的位置</template>
+          <template v-else-if="!regions.length">{{ t('找不到損壞處的位置') }}</template>
           <template v-else>
-            損壞處（點一下跳到前 {{ LEAD_IN }} 秒）：
+            {{ t('損壞處（點一下跳到前 {n} 秒）：', { n: LEAD_IN }) }}
             <button v-for="(g, gi) in regions.slice(0, 20)" :key="gi" class="chipbtn"
-                    :title="`${span(g)}，${g.errors} 行錯誤`"
+                    :title="t('{span}，{n} 行錯誤', { span: span(g), n: g.errors })"
                     @click="jump(g)">{{ span(g) }}</button>
-            <template v-if="regions.length > 20">…還有 {{ regions.length - 20 }} 處</template>
-            <span class="regnote">瀏覽器播到損壞處可能會停住，那正是這支影片的問題。</span>
+            <template v-if="regions.length > 20">{{ t('…還有 {n} 處', { n: regions.length - 20 }) }}</template>
+            <span class="regnote">{{ t('瀏覽器播到損壞處可能會停住，那正是這支影片的問題。') }}</span>
           </template>
         </div>
       </div>
