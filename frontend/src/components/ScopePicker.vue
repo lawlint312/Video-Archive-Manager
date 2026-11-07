@@ -33,6 +33,11 @@ const props = defineProps({
   // picker is collapsed to a summary, and nothing tells you the next scan is
   // still scoped to one folder unless you expand the list and look.
   remember: { type: Boolean, default: true },
+  // the face index works on character folders only: no 待分類 section
+  showInbox: { type: Boolean, default: true },
+  // optional note per row, {path: {text, title, dim}} — the face index puts
+  // "N left" there, so the choice is made knowing what each folder costs
+  info: { type: Object, default: null },
 })
 const emit = defineEmits(['update:selected'])
 
@@ -93,7 +98,7 @@ onMounted(async () => {
   if (!props.remember) localStorage.removeItem(props.storageKey)
   try {
     const s = await api('/api/scope')
-    inbox.value = s.inbox
+    inbox.value = props.showInbox ? s.inbox : []
     chars.value = s.chars
     emit('update:selected', selected.value)
   } catch (e) {
@@ -101,7 +106,15 @@ onMounted(async () => {
   }
 })
 
-defineExpose({ inboxOn, charsOn, selected })
+// tick every listed folder `pred` accepts (and only those), e.g. the ones
+// with something left to do
+function selectWhere(pred) {
+  const on = chars.value.filter(c => pred(c.path))
+  flipped.value = applyAll(applyAll(flipped.value, chars.value, false, props.defaultAll),
+                           on, true, props.defaultAll)
+}
+
+defineExpose({ inboxOn, charsOn, selected, selectWhere })
 </script>
 
 <template>
@@ -177,6 +190,8 @@ defineExpose({ inboxOn, charsOn, selected })
           <input type="checkbox" :checked="picked(c.path)" :disabled="disabled"
                  @change="toggle(c.path)" />
           <span class="nm">{{ c.name }}</span>
+          <span v-if="info && info[c.path]" class="inf" :class="{ dim: info[c.path].dim }"
+                :title="info[c.path].title || ''">{{ info[c.path].text }}</span>
           <!-- the same person often exists on several drives; the badge is
                what tells those rows apart, which a truncated path did not -->
           <span class="root" :title="c.path">{{ c.root_label }}</span>
@@ -227,6 +242,8 @@ defineExpose({ inboxOn, charsOn, selected })
   line-height: 19px; padding: 1px 0; cursor: pointer; }
 .row-chk .nm { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; }
+.row-chk .inf { flex: 0 0 auto; color: #f9e2af; font-size: 11px; }
+.row-chk .inf.dim { color: var(--dim); }
 .row-chk .root { flex: 0 0 auto; color: var(--dim); font-size: 10px;
   border: 1px solid #313148; border-radius: 4px; padding: 0 5px; }
 .row-chk .p { color: var(--dim); font-size: 11px; white-space: nowrap;

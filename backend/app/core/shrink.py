@@ -22,10 +22,21 @@ saving changes:
         crf 26       70% saved, SSIM 0.9902      86% saved, SSIM 0.9898
         crf 28       76% saved, SSIM 0.9884      89% saved, SSIM 0.9882
 
-**No GPU option, and that is deliberate.** nvenc encodes two to three times
-faster but saves less than half as much: on the same 4K clip, `-cq 23` gave
-37% against libx264's 64% at the same resolution, and 84% against 92% when
-scaled to 1080. Speed is not what this feature is for.
+**H.264 on the CPU, or H.265 on the GPU** (the user's choice, 2026-11-07).
+The old "no GPU" verdict measured `h264_nvenc` (`-cq 23`: 37% saved against
+libx264's 64% on a 4K clip), and H.264 NVENC really is worse. `hevc_nvenc` at
+p6 / hq is not. On a 60 s slice of a real 10.3 Mbps 1080p film, at the
+quality of the default level (SSIM 0.9914):
+
+                         saved    time    other work slowed by
+        x264 crf 26      76.5%    24.1 s       34%
+        x265 crf 25      85.7%    39.4 s       61%
+        hevc_nvenc cq 32 ~83.8%   10.8 s        1%  (decoded on the GPU too)
+
+So H.265 goes to the GPU and only falls back to libx265 when NVENC is not
+there. The quality levels stay x264's CRF numbers in the UI; `H265_GPU_CQ`
+and `H265_CPU_CRF` map each to the value that lands on the same SSIM,
+measured on that film and on an over-encoded 720p clip (both agree).
 
 **No frame-rate option either.** Dropping 60 fps to 30 saved under 1% (9.6 MB
 against 9.7 MB) because the encoder already handles near-duplicate frames.
@@ -41,19 +52,26 @@ import threading
 from pathlib import Path
 from typing import Callable, Optional
 
-from .media import SUBPROCESS_FLAGS, VIDEO_EXT
+from .media import SUBPROCESS_FLAGS, VIDEO_EXT, popen_background
 
 log = logging.getLogger("vam.shrink")
 
 DEFAULT_MIN_MBPS = 18.0     # see the note in the API layer on why this default
 DEFAULT_CRF = 26
 CRF_CHOICES = (20, 23, 26, 28)
+CODECS = ("h264", "h265")
+DEFAULT_CODEC = "h264"
+# x264 CRF level -> the setting that gives the same SSIM (see the docstring)
+H265_GPU_CQ = {20: 24, 23: 28, 26: 32, 28: 34}
+H265_CPU_CRF = {20: 19, 23: 22, 26: 25, 28: 28}
 EDGE_CHOICES = (0, 2560, 1920, 1280)        # 0 = leave the resolution alone
 SAMPLE_SECONDS = 10
 
 # Measured (bitrate Mbps -> fraction saved at crf 26, resolution unchanged).
-# Only ever used to sort the candidate list and to show a rough figure; the
-# exact answer for one file comes from `sample()`, which really encodes it.
+# Here it only sorts the candidate list. The figure the panel shows is
+# computed in frontend/src/shrinkestimate.js from the same curve (keep the two
+# copies equal), adjusted for crf / codec / size and corrected by real results;
+# the exact answer for one file comes from `sample()`, which really encodes it.
 _CURVE = ((1.5, .23), (3.3, .45), (6.1, .62), (6.3, .74), (13.0, .80),
           (52.0, .86))
 
@@ -117,13 +135,15 @@ def target_size(w: int, h: int, max_edge: int):
     return nw, nh
 
 
-def output_path(src: Path, crf: int, max_edge: int, info: dict) -> Path:
-    """`clip_crf26.mp4`, or `clip_1080p_crf26.mp4` when it is also scaled.
+def output_path(src: Path, crf: int, max_edge: int, info: dict,
+                codec: str = DEFAULT_CODEC) -> Path:
+    """`clip_crf26.mp4`, or `clip_1080p_crf26.mp4` when it is also scaled;
+    H.265 adds `h265_` in front of the crf (`clip_h265_crf26.mp4`).
 
     The settings go in the name because the same source may well be tried at
     more than one setting, and `_2` alone would not say which is which.
     """
-    tag = f"crf{crf}"
+    tag = f"crf{crf}" if codec == "h264" else f"{codec}_crf{crf}"
     tgt = target_size(info.get("width", 0), info.get("height", 0), max_edge)
     if tgt:
         tag = f"{min(tgt)}p_{tag}"
@@ -164,17 +184,34 @@ def scan(roots, min_mbps: float = DEFAULT_MIN_MBPS,
     return out
 
 
+def _video_args(codec: str, crf: int, gpu: bool) -> list:
+    if codec == "h264":
+        return ["-c:v", "libx264", "-preset", "medium", "-crf", str(crf)]
+    # `hvc1`, not ffmpeg's default `hev1`: Safari and iOS refuse `hev1`
+    if gpu:
+        return ["-c:v", "hevc_nvenc", "-preset", "p6", "-tune", "hq",
+                "-rc", "vbr", "-cq", str(H265_GPU_CQ[crf]), "-b:v", "0",
+                "-tag:v", "hvc1"]
+    return ["-c:v", "libx265", "-preset", "medium",
+            "-crf", str(H265_CPU_CRF[crf]), "-x265-params", "log-level=error",
+            "-tag:v", "hvc1"]
+
+
 def build_cmd(src: Path, dst: Path, crf: int, max_edge: int, info: dict,
               start: Optional[float] = None,
-              seconds: Optional[float] = None) -> list:
+              seconds: Optional[float] = None,
+              codec: str = DEFAULT_CODEC, gpu: bool = False) -> list:
     cmd = ["ffmpeg", "-hide_banner", "-v", "error", "-y"]
+    if gpu:
+        # decoding on the CPU would still cost 15% of it; on the GPU, 5%.
+        # A codec NVDEC lacks is decoded in software by ffmpeg itself.
+        cmd += ["-hwaccel", "cuda"]
     if start is not None:
         cmd += ["-ss", f"{start:.2f}"]
     cmd += ["-i", str(src)]
     if seconds is not None:
         cmd += ["-t", f"{seconds:.2f}"]
-    cmd += ["-map", "0:v:0", "-map", "0:a:0?",
-            "-c:v", "libx264", "-preset", "medium", "-crf", str(crf),
+    cmd += ["-map", "0:v:0", "-map", "0:a:0?", *_video_args(codec, crf, gpu),
             "-pix_fmt", "yuv420p"]
     tgt = target_size(info.get("width", 0), info.get("height", 0), max_edge)
     if tgt:
@@ -190,17 +227,23 @@ def build_cmd(src: Path, dst: Path, crf: int, max_edge: int, info: dict,
 _TIME_RE = re.compile(rb"out_time_ms=(\d+)")
 
 
-def _run(cmd, total: float, progress: Optional[Callable[[float], None]] = None):
+def _run(cmd, total: float, progress: Optional[Callable[[float], None]] = None,
+         background: bool = False):
     """Run ffmpeg, draining stderr on its own thread.
 
     The threaded drain is not optional: a pipe holds about 64 KB, and a
     chatty ffmpeg that fills it stops producing stdout, so a reader waiting on
     stdout waits for ever. That deadlock has already cost this project one
     job stuck at "100%" for nine minutes.
+
+    `background` is for the batch encode: below normal priority and off a
+    third of the cores (`media.popen_background`), so other users of the
+    server are not starved while it runs. The preview clips stay as they were
+    because the person who asked for them is waiting.
     """
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE,
-                            creationflags=SUBPROCESS_FLAGS)
+    pipes = dict(stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    proc = (popen_background(cmd, **pipes) if background else
+            subprocess.Popen(cmd, creationflags=SUBPROCESS_FLAGS, **pipes))
     tail: list = []
 
     def drain():
@@ -233,10 +276,34 @@ def _run(cmd, total: float, progress: Optional[Callable[[float], None]] = None):
                            f"ffmpeg 失敗（代碼 {proc.returncode}）")
 
 
+def _encode(src: Path, dst: Path, crf: int, max_edge: int, info: dict,
+            codec: str, total: float, background: bool,
+            progress: Optional[Callable[[float], None]] = None,
+            **cut) -> str:
+    """Encode, H.265 on the GPU first and on the CPU if that fails.
+
+    Returns the encoder that made the file. The GPU attempt fails within a
+    second where there is no NVENC (no NVIDIA card, an old driver); a file
+    that fails later is simply encoded again from the start on the CPU.
+    """
+    if codec == "h265":
+        try:
+            _run(build_cmd(src, dst, crf, max_edge, info, codec=codec, gpu=True,
+                           **cut), total, progress, background)
+            return "hevc_nvenc"
+        except RuntimeError as e:
+            log.warning("hevc_nvenc 失敗，改用 libx265：%s（%s）", e, src.name)
+            dst.unlink(missing_ok=True)
+    _run(build_cmd(src, dst, crf, max_edge, info, codec=codec, **cut),
+         total, progress, background)
+    return "libx265" if codec == "h265" else "libx264"
+
+
 def run(src: Path, dst: Path, crf: int, max_edge: int, info: dict,
-        progress: Optional[Callable[[float], None]] = None) -> None:
-    _run(build_cmd(src, dst, crf, max_edge, info), info.get("duration") or 1.0,
-         progress)
+        progress: Optional[Callable[[float], None]] = None,
+        codec: str = DEFAULT_CODEC) -> str:
+    return _encode(src, dst, crf, max_edge, info, codec,
+                   info.get("duration") or 1.0, True, progress)
 
 
 def verify(src_info: dict, dst: Path) -> Optional[str]:
@@ -260,7 +327,7 @@ def verify(src_info: dict, dst: Path) -> Optional[str]:
 
 
 def sample(src: Path, crf: int, max_edge: int, cache: Path,
-           seconds: int = SAMPLE_SECONDS) -> dict:
+           seconds: int = SAMPLE_SECONDS, codec: str = DEFAULT_CODEC) -> dict:
     """Encode a short slice, and cut the matching slice of the original.
 
     Both halves are needed: a compressed clip on its own tells you nothing
@@ -283,7 +350,7 @@ def sample(src: Path, crf: int, max_edge: int, cache: Path,
     out = cache / "shrink_samples"
     out.mkdir(parents=True, exist_ok=True)
     import hashlib
-    key = hashlib.md5(f"{src}|{crf}|{max_edge}|{at}".encode()).hexdigest()[:16]
+    key = hashlib.md5(f"{src}|{codec}|{crf}|{max_edge}|{at}".encode()).hexdigest()[:16]
     before, after = out / f"{key}_before.mp4", out / f"{key}_after.mp4"
 
     if not (before.exists() and before.stat().st_size):
@@ -292,8 +359,8 @@ def sample(src: Path, crf: int, max_edge: int, cache: Path,
               "-t", str(seconds), "-map", "0:v:0", "-map", "0:a:0?",
               "-c", "copy", "-movflags", "+faststart", str(before)], seconds)
     if not (after.exists() and after.stat().st_size):
-        _run(build_cmd(src, after, crf, max_edge, info, start=at,
-                       seconds=seconds), seconds)
+        _encode(src, after, crf, max_edge, info, codec, seconds, False,
+                start=at, seconds=seconds)
 
     b, a = before.stat().st_size, after.stat().st_size
     tgt = target_size(info["width"], info["height"], max_edge)

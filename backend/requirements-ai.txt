@@ -4,13 +4,18 @@
 #
 # Nothing here is needed to run VAM. Each feature checks for its own packages
 # and model and says what is missing instead of failing. Versions are the ones
-# this project runs with; the CUDA 12.9 builds need a recent NVIDIA driver.
+# this project runs with. Everything here is built for CUDA 13, which needs an
+# NVIDIA driver 580 or newer and a GTX 16 / RTX 20 series card or later.
+#
+# torch and onnxruntime-gpu must use the same CUDA major version: each brings
+# its own cudnn64_9.dll, and a CUDA 12 build next to a CUDA 13 one in the same
+# process fails to load (whichever comes second breaks).
 #
 # Windows: insightface has no prebuilt wheel and compiles on install, which
 # needs Microsoft C++ Build Tools ("Desktop development with C++").
 
 # PyTorch's CUDA builds come from its own index, not PyPI (about 7.5 GB installed).
---extra-index-url https://download.pytorch.org/whl/cu129
+--extra-index-url https://download.pytorch.org/whl/cu130
 
 numpy>=2.0
 opencv-python>=4.10
@@ -18,11 +23,13 @@ opencv-python>=4.10
 # Face recognition (core/faces.py). The buffalo_l model (about 300 MB) downloads
 # itself on first use; it is licensed for non-commercial research only.
 # The [cuda,cudnn] extras bring the CUDA/cuDNN DLLs, so no separate CUDA install.
-onnxruntime-gpu[cuda,cudnn]>=1.21
+onnxruntime-gpu[cuda,cudnn]>=1.31
 insightface==0.7.3
 
 # Person detection (core/personscan.py). Also needs the model file
 # data/models/person_yolov8m-seg.pt: see README.
-torch==2.8.0+cu129
-torchvision==0.23.0+cu129
+# 2.13+ for GHSA-63cw-57p8-fm3p, GHSA-rrmf-rvhw-rf47, GHSA-qfhq-4f3w-5fph,
+# GHSA-vgrw-7cvw-pwgx; the cu129 index stops at 2.9.0, hence CUDA 13
+torch==2.14.1+cu130
+torchvision==0.29.1+cu130
 ultralytics>=8.3

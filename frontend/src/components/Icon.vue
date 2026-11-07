@@ -15,6 +15,7 @@ import {
   StickyNote, Keyboard, LoaderCircle, ExternalLink, SquareCheck, Square,
   CircleDot, Camera, LayoutGrid, Rows3, LogOut, Gauge, Scissors,
   FlagTriangleRight, FlagTriangleLeft, Heart, Info, History, Globe,
+  CalendarClock, CircleStop,
 } from 'lucide-vue-next'
 
 const MAP = {
@@ -31,6 +32,7 @@ const MAP = {
   rows: Rows3, logout: LogOut, gauge: Gauge, scissors: Scissors,
   markIn: FlagTriangleRight, markOut: FlagTriangleLeft, heart: Heart,
   info: Info, history: History, globe: Globe,
+  calendar: CalendarClock, stop: CircleStop,
 }
 
 const props = defineProps({

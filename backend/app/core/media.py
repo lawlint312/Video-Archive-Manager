@@ -26,6 +26,47 @@ SUBPROCESS_FLAGS = (subprocess.CREATE_NO_WINDOW
                     if platform.system() == "Windows" else 0)
 
 
+def background_cpus(n: Optional[int] = None) -> Optional[List[int]]:
+    """The logical CPUs a background encode may use: a third (at least two)
+    are left for the web server and everyone else. None when too few to split.
+
+    Priority alone is not enough. On 6 cores / 12 threads, libx264 at below
+    normal priority still made a request's worth of Python work 83% slower
+    (230 -> 420 ms): it fills the hyperthread siblings and pulls the boost
+    clock down, and the scheduler's priority cannot give either back. Kept to
+    8 of the 12 the same work was 5% slower, and the encode itself took 4.4 s
+    instead of 3.3 s. Low CPU numbers are SMT pairs on Windows and Linux, so
+    the free third is whole cores.
+    """
+    n = n or os.cpu_count() or 1
+    keep = n - max(2, n // 3)
+    return list(range(keep)) if keep >= 2 else None
+
+
+def popen_background(cmd, **kw) -> subprocess.Popen:
+    """Popen for a long encode nobody is waiting on (a shrink batch): below
+    normal priority and kept off a third of the cores (`background_cpus`)."""
+    cpus = background_cpus()
+    if platform.system() == "Windows":
+        p = subprocess.Popen(cmd, creationflags=SUBPROCESS_FLAGS
+                             | subprocess.BELOW_NORMAL_PRIORITY_CLASS, **kw)
+        if cpus:
+            try:
+                # applies to every thread of the process, including the ones
+                # ffmpeg has already started
+                import psutil
+                psutil.Process(p.pid).cpu_affinity(cpus)
+            except Exception as e:
+                log.warning("背景編碼無法限制 CPU：%s", e)
+        return p
+
+    def pre():
+        os.nice(10)
+        if cpus and hasattr(os, "sched_setaffinity"):
+            os.sched_setaffinity(0, cpus)
+    return subprocess.Popen(cmd, preexec_fn=pre, **kw)
+
+
 # ── Scanning ─────────────────────────────────────────────────────────────────
 
 def scan_videos_with_stat(root: Path, posters: Optional[dict] = None

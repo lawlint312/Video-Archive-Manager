@@ -141,6 +141,27 @@ CREATE TABLE IF NOT EXISTS costar_name (
     at     REAL NOT NULL,
     PRIMARY KEY (video, name)
 );
+-- Jobs that start by themselves at a set time (core/schedule.py). `kind`
+-- names the job, `params` is its JSON body; `repeat` once|daily|weekly with
+-- `date` (once) or `weekdays` (weekly, JSON, Monday = 0); `start_hm`/`end_hm`
+-- are 'HH:MM' local time, end NULL = no end. `last_slot` is the start (epoch)
+-- of the occurrence last launched, so one occurrence never runs twice.
+CREATE TABLE IF NOT EXISTS schedules (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind        TEXT NOT NULL,
+    user_id     INTEGER NOT NULL,
+    params      TEXT NOT NULL,
+    repeat      TEXT NOT NULL,
+    date        TEXT,
+    weekdays    TEXT,
+    start_hm    TEXT NOT NULL,
+    end_hm      TEXT,
+    enabled     INTEGER NOT NULL DEFAULT 1,
+    last_slot   REAL,
+    last_job    TEXT,
+    last_result TEXT,
+    created_at  REAL NOT NULL
+);
 """
 
 

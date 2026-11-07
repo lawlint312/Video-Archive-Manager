@@ -41,7 +41,7 @@ from .core import (media, dedup, imgdedup, faces, charstats, convert,
                    photothumb, videoflags, wikiimport, personscan, subtitles,
                    filetitle, costar, retime, iafd, photosimilar, backup, twofactor,
                    alerts, releasedate, decodecheck, nfo, dmm, avbase, catalog,
-                   gfriends, dmmcover)
+                   gfriends, dmmcover, shrinkstats, schedule, runlog)
 from . import db, auth, jobs, security, roles, settings as app_settings
 
 is_allowed = app_settings.is_allowed
@@ -50,6 +50,8 @@ is_allowed = app_settings.is_allowed
 # keep-or-discard decision. Declared here because it is used well above
 # where the other report paths are defined.
 _PAIRS_PATH = DATA_DIR / "pending_pairs.json"
+# What each finished shrink actually saved — calibrates the estimate
+_SHRINK_RESULTS = DATA_DIR / "shrink_results.json"
 
 log = logging.getLogger("vam")
 
@@ -290,6 +292,7 @@ def _startup():
     # frame-timing repair quietly not appear — "the button is missing" gives
     # nobody anything to go on (same reasoning as personscan.probe).
     threading.Thread(target=_backup_loop, daemon=True).start()
+    threading.Thread(target=_schedule_loop, daemon=True).start()
     # Set here, not at import: tests import this module and start jobs, and
     # must not write the real registry (or rerun the real interrupted jobs).
     jobs.REGISTRY, jobs.NOTICES = JOBS_RUNNING, JOBS_INTERRUPTED
@@ -3922,6 +3925,10 @@ def shrink_scan(body: ShrinkScanBody,
     mbps = max(0.0, float(body.min_mbps))
 
     def _task(progress):
+        # shrinks done before results were recorded still teach the estimate
+        # (only the first time; see shrinkstats.backfill)
+        shrinkstats.backfill(_SHRINK_RESULTS, pairs._read(_PAIRS_PATH),
+                             shrink.probe)
         return shrink.scan(roots, mbps, progress=progress)
 
     return {"job_id": jobs.start(_task, kind="shrink_scan", label="壓縮掃描")}
@@ -3931,6 +3938,7 @@ class ShrinkSampleBody(BaseModel):
     path: str
     crf: int = shrink.DEFAULT_CRF
     max_edge: int = 0
+    codec: str = shrink.DEFAULT_CODEC
 
 
 @app.post("/api/shrink/sample")
@@ -3946,8 +3954,11 @@ def shrink_sample(body: ShrinkSampleBody,
     crf = int(body.crf)
     if crf not in shrink.CRF_CHOICES:
         raise HTTPException(status_code=400, detail="無效的 crf")
+    if body.codec not in shrink.CODECS:
+        raise HTTPException(status_code=400, detail="無效的編碼格式")
     try:
-        out = shrink.sample(p, crf, int(body.max_edge), CACHE_DIR)
+        out = shrink.sample(p, crf, int(body.max_edge), CACHE_DIR,
+                            codec=body.codec)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     # A repeat request reuses the clips rather than re-encoding, so they have
@@ -3963,6 +3974,8 @@ class ShrinkRunBody(BaseModel):
     paths: list
     crf: int = shrink.DEFAULT_CRF
     max_edge: int = 0
+    # a job saved for resuming before this existed was x264, hence the default
+    codec: str = shrink.DEFAULT_CODEC
 
 
 @app.post("/api/shrink/run")
@@ -3979,6 +3992,9 @@ def shrink_run(body: ShrinkRunBody, user: dict = Depends(auth.require_perm("shri
     max_edge = int(body.max_edge)
     if max_edge not in shrink.EDGE_CHOICES:
         raise HTTPException(status_code=400, detail="無效的解析度上限")
+    codec = body.codec
+    if codec not in shrink.CODECS:
+        raise HTTPException(status_code=400, detail="無效的編碼格式")
 
     items = []
     for raw in body.paths:
@@ -3998,15 +4014,16 @@ def shrink_run(body: ShrinkRunBody, user: dict = Depends(auth.require_perm("shri
             if not info:
                 failed.append({"path": str(src), "error": "無法讀取影片資訊"})
                 continue
-            dst = shrink.output_path(src, crf, max_edge, info)
+            dst = shrink.output_path(src, crf, max_edge, info, codec)
             jobs.writing(src, dst)    # a fresh name: anything there is ours
             progress({"index": idx, "total": len(items), "name": src.name,
                       "pct": 0.0})
             try:
-                shrink.run(src, dst, crf, max_edge, info,
-                           progress=lambda f, i=idx, n=src.name: progress(
-                               {"index": i, "total": len(items), "name": n,
-                                "pct": f}))
+                encoder = shrink.run(
+                    src, dst, crf, max_edge, info, codec=codec,
+                    progress=lambda f, i=idx, n=src.name: progress(
+                        {"index": i, "total": len(items), "name": n,
+                         "pct": f}))
             except Exception as e:
                 dst.unlink(missing_ok=True)
                 failed.append({"path": str(src), "error": str(e)})
@@ -4020,7 +4037,9 @@ def shrink_run(body: ShrinkRunBody, user: dict = Depends(auth.require_perm("shri
             saved += info["size"] - got
             # both files now exist and only a person can pick — see core/pairs
             pairs.record(_PAIRS_PATH, src, dst, "shrink", crf=crf,
-                         max_edge=max_edge)
+                         max_edge=max_edge, codec=codec, encoder=encoder)
+            shrinkstats.record(_SHRINK_RESULTS, info, crf, max_edge, codec,
+                               encoder, got)
             done.append({"src": str(src), "dst": str(dst), "name": dst.name,
                          "before": info["size"], "after": got,
                          "ratio": round(1 - got / info["size"], 4)})
@@ -4030,6 +4049,13 @@ def shrink_run(body: ShrinkRunBody, user: dict = Depends(auth.require_perm("shri
     return {"job_id": jobs.start(_task, kind="shrink_run",
                                  label=f"壓縮 {len(items)} 個檔案",
                                  resume=_resumable("shrink_run", body, user))}
+
+
+@app.get("/api/shrink/results")
+def shrink_results(user: dict = Depends(auth.require_perm("shrink"))):
+    """Real outcomes of past shrinks, which the panel uses to correct its
+    estimate. Numbers only — no paths — so there is nothing to scope."""
+    return {"results": shrinkstats.public(shrinkstats.rows(_SHRINK_RESULTS))}
 
 
 @app.get("/api/shrink/sample/play")
@@ -4400,7 +4426,7 @@ def convert_run(body: ConvertRunBody, user: dict = Depends(auth.require_perm("co
                 before = src.stat().st_size
                 try:
                     contactsheet.cancel_prefetch(src)
-                    convert.replace_original(src, dst)
+                    _replace_original(src, dst)
                 except Exception as e:
                     dst.unlink(missing_ok=True)
                     failed.append({"path": str(src),
@@ -5141,7 +5167,7 @@ def dedup_job(job_id: str, user: dict = Depends(auth.require_perm("dedup"))):
 
 # Only these scans check the flag. Accepting it for any job would report
 # "已停止" on work that in fact ran to completion — a lie the UI cannot detect.
-_CANCELLABLE = {"dedup", "imgdedup", "personscan", "convert_decode"}
+_CANCELLABLE = {"dedup", "imgdedup", "personscan", "convert_decode", "face_index"}
 
 
 @app.post("/api/jobs/{job_id}/cancel")
@@ -5565,25 +5591,294 @@ def _require_faces():
                             detail=p["reason"] or "人臉辨識不可用")
 
 
+# What each index run did: the dialog's history, and where the per-video time
+# for its estimate comes from
+_FACE_RUNS = DATA_DIR / "face_index_runs.json"
+FACE_SEC_DEFAULT = 4.0          # measured per video before any run was logged
+
+
 class FaceIndexBody(BaseModel):
-    person: Optional[str] = None    # None = index every character
+    person: Optional[str] = None    # one character by name (the sidebar's menu)
+    paths: Optional[list] = None    # chosen character folders (the dialog)
+    # neither = every character — for a schedule that includes characters
+    # added after it was set up
+    stop_at: Optional[float] = None     # epoch: a schedule's end of window
+    schedule_id: Optional[int] = None
+
+
+def _face_targets(body: FaceIndexBody, user: dict):
+    """[(person, folder)] for the request, and how many asked-for folders are
+    no longer there (renamed, or outside this account's roots now).
+
+    Only folders found under this account's own roots can come back, so a
+    path from anywhere else is skipped, not trusted."""
+    chars = media.list_characters(app_settings.archive_roots_for(user))
+    if body.paths is not None:
+        known = {os.path.normcase(p): (c["name"], p)
+                 for c in chars for p in c["paths"]}
+        out, missing = [], 0
+        for raw in body.paths:
+            hit = known.get(os.path.normcase(str(raw)))
+            if hit:
+                out.append(hit)
+            else:
+                missing += 1
+        return out, missing
+    if body.person:
+        chars = [c for c in chars if c["name"] == body.person]
+        if not chars:
+            raise HTTPException(status_code=404, detail="character not found")
+    # every path of a merged character, not just the first one
+    return [(c["name"], p) for c in chars for p in c["paths"]], 0
 
 
 @app.post("/api/face/index")
 def face_index(body: FaceIndexBody, user: dict = Depends(auth.require_perm("person"))):
     _require_faces()
-    chars = media.list_characters(app_settings.archive_roots_for(user))
-    if body.person:
-        chars = [c for c in chars if c["name"] == body.person]
-        if not chars:
-            raise HTTPException(status_code=404, detail="character not found")
-    folders = {c["name"]: c["path"] for c in chars}
+    if jobs.active("face_index"):
+        raise HTTPException(status_code=409, detail="人臉索引已在執行中")
+    targets, missing = _face_targets(body, user)
+    trigger = "schedule" if body.schedule_id else "manual"
 
     def _task(progress):
-        return faces.index_folders(FACE_DB, folders, progress=progress)
+        res, err, began = {}, "", time.time()
+        try:
+            res = faces.index_folders(FACE_DB, targets, progress=progress,
+                                      stop_at=body.stop_at)
+            return {**res, "missing": missing}
+        except Exception as e:
+            err = str(e)
+            raise
+        finally:
+            row = {"at": began, "trigger": trigger, "folders": len(targets),
+                   "missing": missing, "error": err, **res}
+            runlog.append(_FACE_RUNS, row)
+            if body.schedule_id:
+                schedule.finished(body.schedule_id, row)
 
-    return {"job_id": jobs.start(_task, kind="face_index", label="人臉索引",
+    return {"job_id": jobs.start(_task, kind="face_index",
+                                 label="排程：人臉索引" if body.schedule_id else "人臉索引",
                                  resume=_resumable("face_index", body, user))}
+
+
+def _face_sec(runs: list) -> float:
+    """Seconds per video from the last runs that did any, else the default."""
+    done = [r for r in runs if r.get("processed")][-10:]
+    n = sum(r["processed"] for r in done)
+    return round(sum(r.get("seconds", 0) for r in done) / n, 2) if n else FACE_SEC_DEFAULT
+
+
+def _own_job(job: dict, user: dict) -> bool:
+    return user.get("role") == roles.ADMIN or job.get("user") == user.get("id")
+
+
+@app.get("/api/face/folders")
+def face_folders(user: dict = Depends(auth.require_perm("person"))):
+    """Per character folder: videos, already looked at, still to do.
+
+    Counted off the cached search index (every file is already listed there)
+    against the index's own record, so opening the dialog walks nothing.
+    """
+    roots = list(app_settings.archive_roots_for(user))
+    idx = searchindex.get(roots, list(app_settings.inbox_paths_for(user)),
+                          scoped=bool(user.get("allowed_roots")))
+    folders = {os.path.normcase(p): p
+               for c in media.list_characters(roots) for p in c["paths"]}
+    counts = {p: {"videos": 0, "indexed": 0} for p in folders.values()}
+    seen = faces.processed_paths(FACE_DB)
+    dirs = idx.get("dirs", [])
+    owner: dict = {}
+
+    def folder_of(i):
+        if i not in owner:
+            cur, hit = os.path.normcase(dirs[i]), None
+            while True:
+                if cur in folders:
+                    hit = folders[cur]
+                    break
+                up = os.path.dirname(cur)
+                if up == cur:
+                    break
+                cur = up
+            owner[i] = hit
+        return owner[i]
+
+    for row in idx.get("v", []):
+        if row[3]:
+            continue
+        f = folder_of(row[2])
+        if not f:
+            continue
+        c = counts[f]
+        c["videos"] += 1
+        if os.path.normcase(os.path.join(dirs[row[2]], row[0])) in seen:
+            c["indexed"] += 1
+    for c in counts.values():
+        c["pending"] = c["videos"] - c["indexed"]
+
+    runs = runlog.read(_FACE_RUNS)
+    p = faces.probe()
+    mine = [j for j in jobs.active("face_index") if _own_job(j, user)]
+    return {"folders": counts, "sec_per_video": _face_sec(runs),
+            "runs": runs[-10:][::-1], "active": mine[0]["id"] if mine else None,
+            "busy": bool(jobs.active("face_index")),
+            "available": p["deps"] and p["gpu"],
+            "reason": p.get("reason", ""), "stale": idx.get("stale", False)}
+
+
+# ── schedules (core/schedule.py) ─────────────────────────────────────────────
+
+class FaceScheduleBody(BaseModel):
+    repeat: str
+    date: Optional[str] = None
+    weekdays: list = []
+    start: str
+    end: Optional[str] = None
+    all: bool = False               # every character, including later ones
+    paths: list = []
+
+
+def _schedule_view(s: dict, now: datetime) -> dict:
+    st = schedule.state(s, now)
+    if st == "started":
+        j = jobs.get(s.get("last_job") or "")
+        if j and j["status"] == "running":
+            st = "running"
+    nxt = schedule.next_start(s, now) if st != "off" else None
+    if s["repeat"] == "once" and st in ("done", "missed"):
+        nxt = None
+    owner = auth.get_user_by_id(s["user_id"])
+    prm = s["params"]
+    return {"id": s["id"], "repeat": s["repeat"], "date": s.get("date"),
+            "weekdays": s["weekdays"], "start": s["start"], "end": s.get("end"),
+            "enabled": s["enabled"], "all": bool(prm.get("all")),
+            "names": prm.get("names", []), "state": st,
+            "next": nxt.isoformat(timespec="minutes") if nxt else None,
+            "last_result": s.get("last_result"),
+            "owner": owner["username"] if owner else "?"}
+
+
+def _schedule_for(sid: int, user: dict) -> dict:
+    s = schedule.get(sid)
+    if not s or s["kind"] != "face_index":
+        raise HTTPException(status_code=404, detail="找不到這個排程")
+    if user.get("role") != roles.ADMIN and s["user_id"] != user.get("id"):
+        raise HTTPException(status_code=403, detail="只能修改自己的排程")
+    return s
+
+
+@app.get("/api/face/schedules")
+def face_schedules(user: dict = Depends(auth.require_perm("person"))):
+    """Your schedules (an admin sees everyone's), with what each will do next.
+    Times are the server's clock, so it is sent along."""
+    now = datetime.now()
+    mine = None if user.get("role") == roles.ADMIN else user.get("id")
+    return {"now": now.isoformat(timespec="minutes"),
+            "schedules": [_schedule_view(s, now)
+                          for s in schedule.all_of("face_index", mine)]}
+
+
+@app.post("/api/face/schedules")
+def face_schedule_add(body: FaceScheduleBody,
+                      user: dict = Depends(auth.require_perm("person"))):
+    d = body.model_dump() if hasattr(body, "model_dump") else body.dict()
+    problem = schedule.validate(d, datetime.now())
+    if problem:
+        raise HTTPException(status_code=400, detail=problem)
+    if body.all:
+        params = {"all": True}
+    else:
+        targets, missing = _face_targets(FaceIndexBody(paths=body.paths), user)
+        if not targets:
+            raise HTTPException(status_code=400, detail="請至少選擇一個角色")
+        if missing:
+            raise HTTPException(status_code=403, detail="有資料夾不在可存取的範圍內")
+        params = {"all": False, "paths": [p for _n, p in targets],
+                  "names": sorted({n for n, _p in targets})}
+    sid = schedule.add("face_index", user["id"], d, params)
+    return _schedule_view(schedule.get(sid), datetime.now())
+
+
+class ScheduleEnableBody(BaseModel):
+    enabled: bool
+
+
+@app.patch("/api/face/schedules/{sid}")
+def face_schedule_enable(sid: int, body: ScheduleEnableBody,
+                         user: dict = Depends(auth.require_perm("person"))):
+    _schedule_for(sid, user)
+    schedule.set_enabled(sid, body.enabled)
+    return _schedule_view(schedule.get(sid), datetime.now())
+
+
+@app.delete("/api/face/schedules/{sid}")
+def face_schedule_delete(sid: int, user: dict = Depends(auth.require_perm("person"))):
+    _schedule_for(sid, user)
+    schedule.delete(sid)
+    return {"ok": True}
+
+
+def _start_scheduled_face(s: dict, slot, user: dict) -> str:
+    prm = s["params"]
+    body = FaceIndexBody(paths=None if prm.get("all") else prm.get("paths", []),
+                         stop_at=slot[1].timestamp() if slot[1] else None,
+                         schedule_id=s["id"])
+    return face_index(body, user)["job_id"]
+
+
+# kind → (permission the owner must still have, starter)
+_SCHEDULED = {"face_index": ("person", _start_scheduled_face)}
+
+
+def schedule_tick(now: Optional[datetime] = None) -> list:
+    """Start whatever is due. Returns the job ids started (for the tests).
+
+    An occurrence is launched once: `last_slot` records it. Something of the
+    same kind already running (a manual run, or this schedule's own job
+    resumed after a restart) means "try again next tick", not "missed" — the
+    window is still open.
+    """
+    now = now or datetime.now()
+    started = []
+    for s in schedule.all_of():
+        if not s["enabled"] or s["kind"] not in _SCHEDULED:
+            continue
+        slot = schedule.slot_at(s, now)
+        if not slot or s.get("last_slot") == slot[0].timestamp():
+            continue
+        perm, starter = _SCHEDULED[s["kind"]]
+        user = _job_owner({"user": s["user_id"]})
+        err, job_id = "", ""
+        if not user or perm not in auth.perms_of(user):
+            err = "排程的帳號已不存在、已停用或沒有權限"
+        else:
+            try:
+                job_id = starter(s, slot, user)
+            except HTTPException as e:
+                if e.status_code == 409:
+                    continue
+                err = str(e.detail)
+            except Exception as e:              # noqa: BLE001 - recorded
+                err = str(e)
+        schedule.started(s["id"], slot[0].timestamp(), job_id)
+        if err:
+            log.warning("schedule %s could not start: %s", s["id"], err)
+            schedule.finished(s["id"], {"at": time.time(), "error": err,
+                                        "trigger": "schedule"})
+        else:
+            started.append(job_id)
+    return started
+
+
+def _schedule_loop():
+    """Every 30 s: anything due? A thread like the backup's — this machine is
+    a desktop, and catching up inside the window is the rule (see schedule)."""
+    while True:
+        try:
+            schedule_tick()
+        except Exception:                        # noqa: BLE001 - never kill the thread
+            log.exception("schedule tick failed")
+        time.sleep(30)
 
 
 @app.get("/api/face/job/{job_id}")
@@ -5791,6 +6086,31 @@ def _unlink(p: Path):
                 pass
             p.unlink()
             return
+
+
+def _replace_original(src: Path, staged: Path):
+    """`convert.replace_original`, with the same back-off as `_unlink`.
+
+    Renaming over a file something has open fails on an SMB share with
+    WinError 5 (access denied), not 32: a convert on the NAS failed this way
+    once at the very end of a 33-minute batch, and the file was free again a
+    minute later. Whoever held it is logged, so the next one can be named.
+    """
+    waits = (0.3, 0.6, 1.2, 2.4)
+    for attempt in range(len(waits) + 1):
+        try:
+            convert.replace_original(src, staged)
+            return
+        except PermissionError as e:
+            if getattr(e, "winerror", None) not in (5, 32):
+                raise
+            log.warning("取代原檔 WinError %s 第 %d 次 %s；%s", e.winerror,
+                        attempt + 1, src.name, _holders(src))
+            if attempt == len(waits):
+                raise RuntimeError(
+                    f"{e.strerror or e}"
+                    f"（WinError {e.winerror}，重試 {len(waits)} 次後仍失敗）") from e
+            time.sleep(waits[attempt])
 
 
 # One wording for every path that refuses a delete, because the user reads it

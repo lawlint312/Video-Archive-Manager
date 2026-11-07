@@ -161,11 +161,125 @@ def test_sample(tmp: Path):
           "預算比縮圖小：一次試看約 45 MB，而且看完就沒用了")
 
 
+def _child_ffmpeg():
+    """priority class and CPU list of the ffmpeg this process is running."""
+    import psutil
+    for c in psutil.Process().children(recursive=True):
+        try:
+            if c.name().lower().startswith("ffmpeg"):
+                return c.nice(), sorted(c.cpu_affinity())
+        except psutil.Error:
+            pass
+    return None
+
+
+def test_background(tmp: Path):
+    print("\n批次壓縮讓出 CPU，試看不讓")
+    from app.core import media
+    check(media.background_cpus(12) == list(range(8)), "12 執行緒 → 用 8 個、留 4 個")
+    check(media.background_cpus(4) == [0, 1], "4 執行緒 → 用 2 個")
+    check(media.background_cpus(2) is None, "只有 2 個時不限制（分不出來）")
+
+    src = tmp / "bg.mp4"
+    if not make(src, 1280, 720, seconds=20):
+        check(False, "無法產生測試影片（跳過）")
+        return
+    info = shrink.probe(src)
+    seen = []
+    shrink.run(src, tmp / "bg_out.mp4", 28, 0, info,
+               progress=lambda f: seen.append(_child_ffmpeg()) if not seen else None)
+    want = media.background_cpus()
+    got = seen[0] if seen else None
+    if sys.platform == "win32":
+        import psutil
+        check(got and got[0] == psutil.BELOW_NORMAL_PRIORITY_CLASS,
+              f"批次壓縮是低於正常的優先權（{got and got[0]}）")
+    check(got and got[1] == (want or got[1]),
+          f"批次壓縮只用 {want}（實際 {got and got[1]}）")
+
+    # the preview is something the user sits and waits for
+    seen.clear()
+    orig = shrink._run
+
+    def spy(cmd, total, progress=None, background=False):
+        return orig(cmd, total, lambda f: seen.append(_child_ffmpeg()) if not seen else None,
+                    background)
+    shrink._run = spy
+    try:
+        shrink.sample(src, 28, 0, tmp / "cache", seconds=6)
+    finally:
+        shrink._run = orig
+    got = seen[0] if seen else None
+    check(got and len(got[1]) == (__import__("os").cpu_count()),
+          f"試看用全部的 CPU（{got and len(got[1])} 個）")
+
+
+def _vtag(path: Path) -> str:
+    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0",
+                        "-show_entries", "stream=codec_name,codec_tag_string",
+                        "-of", "json", str(path)],
+                       capture_output=True, creationflags=SUBPROCESS_FLAGS)
+    s = json.loads(r.stdout)["streams"][0]
+    return f"{s['codec_name']}/{s['codec_tag_string']}"
+
+
+def test_h265(tmp: Path):
+    print("\nH.265：GPU 優先，沒有就退回 CPU")
+    src = tmp / "h.mp4"
+    if not make(src, 640, 480):
+        check(False, "無法產生測試影片（跳過）")
+        return
+    info = shrink.probe(src)
+    dst = shrink.output_path(src, 26, 0, info, "h265")
+    check(dst.name == "h_h265_crf26.mp4", f"檔名標出編碼：{dst.name}")
+    check(shrink.output_path(src, 26, 0, info).name == "h_crf26.mp4",
+          "H.264 的檔名照舊")
+
+    enc = shrink.run(src, dst, 26, 0, info, codec="h265")
+    check(enc in ("hevc_nvenc", "libx265"), f"用 {enc} 編碼")
+    check(_vtag(dst) == "hevc/hvc1", f"輸出 {_vtag(dst)}（Safari／iOS 只認 hvc1）")
+    check(shrink.verify(info, dst) is None, f"驗證通過（{shrink.verify(info, dst)}）")
+
+    # GPU decode hands frames back to the CPU scaler — that has to just work
+    small = shrink.output_path(src, 26, 320, info, "h265")
+    enc = shrink.run(src, small, 26, 320, info, codec="h265")
+    o = shrink.probe(small)
+    check((o["width"], o["height"]) == (320, 240) and o["vcodec"] == "hevc",
+          f"H.265 加縮解析度（{enc}）：{o['width']}x{o['height']} {o['vcodec']}")
+
+    # where NVENC is missing ffmpeg fails at once; simulated with an encoder
+    # name that exists nowhere, so this runs the same on any machine
+    orig = shrink._video_args
+    shrink._video_args = lambda c, q, gpu: (["-c:v", "no_such_nvenc"] if gpu
+                                            else orig(c, q, gpu))
+    try:
+        d2 = shrink.output_path(src, 26, 0, info, "h265")
+        enc = shrink.run(src, d2, 26, 0, info, codec="h265")
+    finally:
+        shrink._video_args = orig
+    check(enc == "libx265" and _vtag(d2) == "hevc/hvc1",
+          f"GPU 失敗 → {enc}，輸出 {_vtag(d2)}")
+    check(shrink.verify(info, d2) is None, "退回 CPU 的結果也通過驗證")
+
+    cmd = shrink.build_cmd(src, d2, 26, 1280, info, codec="h265", gpu=True)
+    check(cmd.index("-hwaccel") < cmd.index("-i"), "GPU 時連解碼也在 GPU")
+    check(str(shrink.H265_GPU_CQ[26]) in cmd and "hevc_nvenc" in cmd,
+          f"crf 26 對應到 cq {shrink.H265_GPU_CQ[26]}")
+    check(set(shrink.H265_GPU_CQ) == set(shrink.H265_CPU_CRF) == set(shrink.CRF_CHOICES),
+          "每個品質等級都有對應值")
+
+    s = shrink.sample(src, 26, 0, tmp / "cache", seconds=3, codec="h265")
+    s264 = shrink.sample(src, 26, 0, tmp / "cache", seconds=3)
+    check(_vtag(Path(s["after"])) == "hevc/hvc1", "試看也用 H.265")
+    check(s["after"] != s264["after"], "H.264 與 H.265 的試看分開快取")
+
+
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")
     test_target_size()
     test_estimate_is_monotonic()
-    for fn in (test_names, test_encode_and_verify, test_sample):
+    for fn in (test_names, test_encode_and_verify, test_sample,
+               test_background, test_h265):
         d = Path(tempfile.mkdtemp())
         try:
             fn(d)

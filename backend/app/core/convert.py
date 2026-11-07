@@ -29,7 +29,15 @@ log = logging.getLogger("vam.convert")
 _OK_VIDEO = {"h264"}
 _OK_AUDIO = {"aac", "mp3"}
 # Held by MP4 but browser support is patchy — copied, then flagged.
-_RISKY_VIDEO = {"hevc", "av1"}
+_RISKY_VIDEO = {"av1"}
+# H.265 plays in Safari / iOS, and in Chrome and Edge wherever there is a
+# hardware decoder (Chrome 107+; GPUs from about 2016 on). Older devices that
+# cannot are not a concern (the user's decision, 2026-11-07) — and the shrink
+# tool now writes H.265, which a re-encode here would quietly undo. 10-bit
+# Main10 is fine too: Chrome reports it supported and power-efficient.
+_OK_HEVC_PIX = {"yuv420p", "yuvj420p", "yuv420p10le"}
+# what has its video stream copied, so an H.265 source stays H.265
+_COPIES_VIDEO = ("remux", "remux_audio", "audiofix", "gapfix", "gapcut")
 
 # `yuvj420p` is `yuv420p` with a full-range flag (`color_range=pc`) — same
 # chroma subsampling, same decoder path, and browsers play it. It used to be
@@ -149,14 +157,14 @@ def plan_for(path: Path) -> dict:
     v, a, pix = info["vcodec"], info["acodec"], info["pix_fmt"]
     note = ""
 
-    if v in _OK_VIDEO and pix in _OK_PIX:
+    if (v in _OK_VIDEO and pix in _OK_PIX) or (v == "hevc" and pix in _OK_HEVC_PIX):
         if not a or a in _OK_AUDIO:
             action, reason = "remux", "換殼（無損，不重新編碼）"
         else:
             action, reason = "remux_audio", f"換殼＋音訊轉 AAC（視訊無損，來源音訊 {a}）"
     elif v in _RISKY_VIDEO:
         action, reason = "reencode", f"需重編碼（{v} 在瀏覽器支援不穩定）"
-    elif v in _OK_VIDEO:
+    elif v in _OK_VIDEO or v == "hevc":
         action, reason = "reencode", f"需重編碼（像素格式 {pix}，瀏覽器不支援）"
     else:
         action, reason = "reencode", f"需重編碼（視訊為 {v}）"
@@ -267,6 +275,9 @@ def _build_cmd(src: Path, dst: Path, action: str, info: dict,
             cmd += ["-c:v", "libx264", "-crf", str(crf), "-preset", "medium"]
         cmd += ["-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k"]
 
+    if action in _COPIES_VIDEO and info.get("vcodec") == "hevc":
+        # MKV and TS carry H.265 as `hev1`, which Safari and iOS refuse
+        cmd += ["-tag:v", "hvc1"]
     cmd += ["-movflags", "+faststart", "-progress", "pipe:1", "-nostats",
             str(dst)]
     return cmd

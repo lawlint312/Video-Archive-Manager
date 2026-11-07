@@ -16,6 +16,7 @@ import ProfileTab from './components/ProfileTab.vue'
 import DupDialog from './components/DupDialog.vue'
 import JavDialog from './components/JavDialog.vue'
 import ConvertDialog from './components/ConvertDialog.vue'
+import FaceIndexDialog from './components/FaceIndexDialog.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import HomeView from './components/HomeView.vue'
 import GroupManagerDialog from './components/GroupManagerDialog.vue'
@@ -35,30 +36,8 @@ const ready = ref(false)
 const selectedInbox = ref(null)
 const inboxGrid = ref(null)
 const mergeChar = ref(null)
-const faceIndexing = ref(false)
-
-async function runFaceIndex() {
-  if (!confirm(t('為所有角色建立人臉索引？\n\n第一次執行會逐一分析每部影片，可能需要很長時間。\n（已索引過的影片會自動跳過）'))) return
-  faceIndexing.value = true
-  try {
-    const { job_id } = await api('/api/face/index', {
-      method: 'POST', body: JSON.stringify({}),
-    })
-    while (true) {
-      await new Promise(r => setTimeout(r, 800))
-      const j = await api(`/api/face/job/${job_id}`)
-      if (j.progress && typeof j.progress === 'object') {
-        setBusy(t('人臉索引：{person} / {file}', j.progress))
-      }
-      if (j.status === 'done') {
-        setStatus(t('人臉索引完成，新增 {n} 部', { n: j.result.indexed }), 'ok'); break
-      }
-      if (j.status === 'error') { setStatus(t('索引失敗：') + ts(j.error), 'warn'); break }
-    }
-  } catch (e) {
-    setStatus(t('索引失敗：') + errText(e), 'warn')
-  } finally { faceIndexing.value = false; setBusy('') }
-}
+// the face index has its own dialog: pick characters, stop, schedule
+const showFace = ref(false)
 
 function onMergeDone() {
   mergeChar.value = null
@@ -211,9 +190,9 @@ const dupStart = computed(() => {
 // other.
 const toolItems = computed(() => !store.editMode ? [] : [
   can('person') && { key: 'face', icon: 'face',
-    label: faceIndexing.value ? t('索引中…') : t('人臉索引'),
-    title: store.faceAvailable ? t('為所有角色建立人臉索引') : store.faceReason,
-    disabled: !store.faceAvailable || faceIndexing.value, run: runFaceIndex },
+    label: t('人臉索引'),
+    title: store.faceAvailable ? t('選擇角色建立人臉索引，可排程自動執行') : store.faceReason,
+    disabled: !store.faceAvailable, run: () => { showFace.value = true } },
   can('lookup') && { key: 'lookup', icon: 'search', label: t('角色查詢'),
     title: t('個資、片名、WIKI 匯入'), run: () => { showJav.value = true } },
   can('convert', 'shrink') && { key: 'convert', icon: 'refresh', label: t('轉檔'),
@@ -226,7 +205,7 @@ const toolItems = computed(() => !store.editMode ? [] : [
 ].filter(Boolean))
 // What the closed menu has to say on its own: a scan or index in progress,
 // and the duplicate count that used to sit on the 重複掃描 button.
-const toolsBusy = computed(() => faceIndexing.value || dupRunning.value)
+const toolsBusy = computed(() => dupRunning.value)
 const toolMenu = ref(false)
 function runTool(tool) { toolMenu.value = false; tool.run() }
 const showSettings = ref(false)
@@ -635,6 +614,7 @@ onMounted(checkAuth)
 
     <DupDialog v-if="dupTab" :start="dupTab" @close="dupTab = ''" />
     <JavDialog v-if="showJav" @close="showJav = false" />
+    <FaceIndexDialog v-if="showFace" @close="showFace = false" />
     <ConvertDialog v-if="showConvert" @close="showConvert = false"
                    @done="sidebarKey++; store.filesVersion++" />
     <SettingsDialog v-if="showSettings" @close="showSettings = false" @saved="onSettingsSaved" />

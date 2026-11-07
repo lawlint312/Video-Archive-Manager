@@ -234,7 +234,7 @@ winget install GPAC.GPAC
 需要的空间与条件比其他功能大得多，请先确认需要再安装：
 
 - 硬盘约 **10 GB**（PyTorch 的 GPU 版就占 7.5 GB）
-- **NVIDIA 显卡**与较新的驱动程序（套件使用 CUDA 12.9）；CUDA 与 cuDNN 由 pip 一并安装，不必另外安装
+- **NVIDIA 显卡**（GTX 16／RTX 20 系列或更新）与 580 版以上的驱动程序（套件使用 CUDA 13）；CUDA 与 cuDNN 由 pip 一并安装，不必另外安装
 - Windows 上 `insightface` 没有预编译版本，安装时需要编译，要先安装
   [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)（勾选“使用 C++ 的桌面开发”）
 

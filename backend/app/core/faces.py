@@ -28,7 +28,7 @@ def preload_cuda() -> None:
     """Put the pip-installed CUDA/cuDNN DLLs on the search path.
 
     Without this, onnxruntime-gpu on Windows cannot find the DLLs that ship in
-    the `nvidia-*-cu12` wheels, and **every session silently falls back to the
+    the `nvidia-*` CUDA wheels, and **every session silently falls back to the
     CPU** — no exception, no warning, and `get_available_providers()` still
     lists CUDA because that reports what the build supports, not what a session
     managed to load. Measured here: all five buffalo_l models reported
@@ -209,41 +209,86 @@ def _cos(a, b) -> float:
 
 # ── indexing / matching ──────────────────────────────────────────────────────
 
-def index_folders(db_path: Path, folders: dict,
-                  progress: Optional[Callable] = None) -> dict:
-    """folders: {person_name: folder_path}. Incremental — skips indexed videos."""
-    from .media import scan_videos_with_stat
+def processed_paths(db_path: Path) -> set:
+    """normcase'd paths of every video already looked at (with or without a
+    face found) — what an index run skips."""
+    import os
+    if not db_path.exists():
+        return set()
     conn = open_db(db_path)
-    indexed = 0
     try:
-        for person, folder in folders.items():
-            root = Path(folder)
-            if not root.exists():
-                continue
-            done = {r[0] for r in conn.execute(
-                "SELECT video_path FROM processed_videos WHERE person_name=?",
-                (person,))}
-            for video, _s, _m in scan_videos_with_stat(root):
-                if str(video) in done:
-                    continue
-                if progress:
-                    progress({"person": person, "file": video.name,
-                              "indexed": indexed})
-                embs = extract_embeddings(video)
-                for e in embs:
-                    conn.execute(
-                        "INSERT INTO face_index (person_name, video_path, embedding) "
-                        "VALUES (?,?,?)", (person, str(video), _blob(e)))
-                conn.execute(
-                    "INSERT OR REPLACE INTO processed_videos "
-                    "(video_path, person_name, indexed_at) VALUES (?,?,?)",
-                    (str(video), person, datetime.now(timezone.utc).isoformat()))
-                conn.commit()
-                if embs:
-                    indexed += 1
+        return {os.path.normcase(r[0]) for r in
+                conn.execute("SELECT video_path FROM processed_videos")}
     finally:
         conn.close()
-    return {"indexed": indexed}
+
+
+def index_folders(db_path: Path, folders, progress: Optional[Callable] = None,
+                  stop_at: Optional[float] = None) -> dict:
+    """Index every video not looked at yet. Incremental and stoppable.
+
+    `folders` is {person: path} or a list of (person, path) — a list because
+    one person can have a folder on more than one drive. The whole list of
+    what is left is gathered first, so the progress has a total to count
+    against (the walk is seconds; each video is about 4 s).
+
+    Checked before every video, so a stop takes effect within one video:
+    `progress.cancelled` (the job's stop button) and `stop_at` (an epoch time
+    — a schedule's end of window). What is done stays done either way; the
+    next run starts with what is left.
+    """
+    import os
+    import time
+    from .media import scan_videos_with_stat
+    items = folders.items() if isinstance(folders, dict) else folders
+    seen = processed_paths(db_path)
+    todo = []
+    for person, folder in items:
+        root = Path(folder)
+        if not root.exists():
+            continue
+        for video, _s, _m in scan_videos_with_stat(root):
+            if os.path.normcase(str(video)) not in seen:
+                todo.append((person, video))
+
+    out = {"indexed": 0, "processed": 0, "no_face": 0, "total": len(todo),
+           "seconds": 0.0, "stopped": None}
+    if not todo:
+        return out
+    conn = open_db(db_path)
+    t0 = time.time()
+    try:
+        for n, (person, video) in enumerate(todo):
+            if progress is not None and getattr(progress, "cancelled", False):
+                out["stopped"] = "cancelled"
+                break
+            if stop_at and time.time() >= stop_at:
+                out["stopped"] = "deadline"
+                break
+            if progress:
+                el = time.time() - t0
+                progress({"person": person, "file": video.name, "done": n,
+                          "total": len(todo), "indexed": out["indexed"],
+                          "sec": round(el / n, 2) if n else None})
+            embs = extract_embeddings(video)
+            for e in embs:
+                conn.execute(
+                    "INSERT INTO face_index (person_name, video_path, embedding) "
+                    "VALUES (?,?,?)", (person, str(video), _blob(e)))
+            conn.execute(
+                "INSERT OR REPLACE INTO processed_videos "
+                "(video_path, person_name, indexed_at) VALUES (?,?,?)",
+                (str(video), person, datetime.now(timezone.utc).isoformat()))
+            conn.commit()
+            out["processed"] += 1
+            if embs:
+                out["indexed"] += 1
+            else:
+                out["no_face"] += 1
+    finally:
+        conn.close()
+        out["seconds"] = round(time.time() - t0, 1)
+    return out
 
 
 def index_single(db_path: Path, person: str, video: Path) -> int:

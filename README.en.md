@@ -234,7 +234,7 @@ Restart VAM afterwards (`stop.bat`, then `start.bat`).
 These need far more space and hardware than anything else, so check you want them first:
 
 - about **10 GB** of disk (the GPU build of PyTorch alone is 7.5 GB)
-- an **NVIDIA graphics card** with a recent driver (the packages use CUDA 12.9); CUDA and cuDNN are installed by pip, nothing separate to install
+- an **NVIDIA graphics card** (GTX 16 / RTX 20 series or newer) with driver 580 or newer (the packages use CUDA 13); CUDA and cuDNN are installed by pip, nothing separate to install
 - on Windows, `insightface` has no prebuilt package and is compiled during installation, so install
   [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) first (select "Desktop development with C++")
 

@@ -11,6 +11,7 @@ import { ref, computed, watch, nextTick } from 'vue'
 import { api, errText } from '../api'
 import { setStatus, setBusy } from '../store'
 import { fmtSize, fmtDur } from '../dedup'
+import { estimateSaving, calibrate } from '../shrinkestimate.js'
 import ScopePicker from './ScopePicker.vue'
 import VideoCompare from './VideoCompare.vue'
 import Icon from './Icon.vue'
@@ -31,6 +32,10 @@ const chosen = ref(new Set())
 const minMbps = ref(18)
 const crf = ref(26)
 const maxEdge = ref(0)
+// H.265 by default: smaller files, and it runs on the GPU, so the CPU stays
+// free for everyone else — see CODEC_TABLE and core/shrink.py
+const codec = ref('h265')
+const showCodecHelp = ref(false)
 const showCrfHelp = ref(false)
 const showEdgeHelp = ref(false)
 const showMbpsHelp = ref(false)
@@ -47,7 +52,14 @@ const EDGE_TABLE = [
   { name: N_('原解析度 crf 26'), sec: 52, save: 86 },
   { name: N_('縮 1440 crf 23'), sec: 30, save: 91 },
   { name: N_('縮 1080 crf 26'), sec: 18, save: 96, approx: true },
-  { name: 'nvenc (GPU) cq 23', sec: 23, save: 37, only: true },
+]
+// measured on a 60 s slice of a real 10.3 Mbps 1080p film, every row at the
+// quality of crf 26 (SSIM 0.991); `others` is how much slower the same piece
+// of server work ran while the encode was going
+const CODEC_TABLE = [
+  { v: 'h264', name: N_('H.264（CPU）'), save: 76.5, sec: 24, others: 34 },
+  { v: 'h265', name: N_('H.265（GPU）'), save: 84, sec: 11, others: 1 },
+  { v: '', name: N_('H.265，沒有 GPU 時（CPU）'), save: 86, sec: 39, others: 61 },
 ]
 const EDGES = [
   { v: 0, label: N_('原樣（不縮）') },
@@ -56,10 +68,24 @@ const EDGES = [
   { v: 1280, label: N_('長邊 1280（720）') },
 ]
 
+// The estimate follows the settings above (crf, codec, max edge) and is
+// corrected by what past shrinks really saved — see shrinkestimate.js.
+const results = ref([])
+async function loadResults() {
+  try { results.value = (await api('/api/shrink/results')).results } catch { /* ignore */ }
+}
+loadResults()
+const cal = computed(() => calibrate(results.value))
+// every result counts: a codec with none of its own borrows the overall figure
+const calN = computed(() => cal.value.n.all)
+const settings = computed(() => ({ crf: Number(crf.value), codec: codec.value,
+                                   maxEdge: Number(maxEdge.value) }))
+const est = i => estimateSaving(i, settings.value, cal.value)
+
 const picked = computed(() =>
   (items.value || []).filter(i => chosen.value.has(i.path)))
 const pickedSaving = computed(() =>
-  picked.value.reduce((n, i) => n + i.est_saving, 0))
+  picked.value.reduce((n, i) => n + est(i), 0))
 
 function toggle(i) {
   const s = new Set(chosen.value)
@@ -96,6 +122,7 @@ async function scan() {
       setBusy(p ? t('壓縮掃描：') + ts(p) : '')
     })
     items.value = res
+    loadResults()           // the scan may have seeded it from older shrinks
     // nothing pre-selected: this is lossy, every file is a deliberate choice
     chosen.value = new Set()
     scopeOpen.value = false
@@ -115,7 +142,7 @@ async function preview(i) {
     const d = await api('/api/shrink/sample', {
       method: 'POST',
       body: JSON.stringify({ path: i.path, crf: Number(crf.value),
-                             max_edge: Number(maxEdge.value) }),
+                             max_edge: Number(maxEdge.value), codec: codec.value }),
     })
     sample.value = { ...d, item: i }
   } catch (e) {
@@ -204,7 +231,8 @@ async function run() {
       method: 'POST',
       body: JSON.stringify({ paths: picked.value.map(i => i.path),
                              crf: Number(crf.value),
-                             max_edge: Number(maxEdge.value) }),
+                             max_edge: Number(maxEdge.value),
+                             codec: codec.value }),
     })
     const res = await poll(job_id, '/api/shrink/job', p => {
       if (p && typeof p === 'object') {
@@ -223,6 +251,7 @@ async function run() {
     chosen.value = new Set([...chosen.value].filter(p => !done.has(p)))
     doneOpen.value = false       // a fresh run collapses back to the summary
     await loadPending()          // the new pairs are now waiting on a decision
+    loadResults()                // and the estimate learns from them
     // Land on the decisions, not on a list of things already known to have
     // worked — checking the pairs is the whole reason the run finished.
     await nextTick()
@@ -243,7 +272,7 @@ async function run() {
 
     <div v-show="scopeOpen" class="scopewrap">
       <ScopePicker storage-key="vam.shrink.picked" :default-all="false"
-                   :disabled="scanning || running"
+                   :remember="false" :disabled="scanning || running"
                    @update:selected="v => selected = v" />
       <div class="opts">
         <label class="lab">{{ t('位元率門檻') }}</label>
@@ -262,6 +291,12 @@ async function run() {
 
     <div class="opts params">
       <label class="lab">
+        {{ t('編碼') }}
+        <button class="qmark" :class="{ on: showCodecHelp }" @click="showCodecHelp = !showCodecHelp">?</button>
+      </label>
+      <label class="radio"><input type="radio" value="h264" v-model="codec" :disabled="running" /> H.264</label>
+      <label class="radio"><input type="radio" value="h265" v-model="codec" :disabled="running" /> H.265</label>
+      <label class="lab">
         {{ t('品質 crf') }}
         <button class="qmark" @click="showCrfHelp = !showCrfHelp">?</button>
       </label>
@@ -276,6 +311,24 @@ async function run() {
       <select v-model.number="maxEdge" :disabled="running" style="width:180px">
         <option v-for="e in EDGES" :key="e.v" :value="e.v">{{ t(e.label) }}</option>
       </select>
+    </div>
+
+    <div v-if="showCodecHelp" class="helptbl">
+      <div class="hh">{{ t('實測（1080p 影片的 60 秒切片，畫質都相當於 crf 26）') }}</div>
+      <table>
+        <thead>
+          <tr><th>{{ t('編碼') }}</th><th>{{ t('省下') }}</th><th>{{ t('耗時') }}</th><th>{{ t('同時其他人變慢') }}</th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="r in CODEC_TABLE" :key="r.name" :class="{ cur: r.v === codec }">
+            <td>{{ t(r.name) }}</td><td>{{ r.save }}%</td>
+            <td>{{ t('{n} 秒', { n: r.sec }) }}</td><td>{{ r.others }}%</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="hn">
+        {{ t('H.265 的檔案小約三成，而且交給顯示卡編碼，壓縮時幾乎不佔 CPU。代價是') }}<b>{{ t('較舊的裝置不能播') }}</b>{{ t('：要 Safari／iPhone，或 Chrome／Edge 搭配有 H.265 硬體解碼的顯示卡或手機（約 2016 年以後）。沒有 NVIDIA 顯示卡時自動改用 CPU，檔案一樣小，但比較慢、也比較佔 CPU。') }}
+      </div>
     </div>
 
     <div v-if="showCrfHelp" class="helptbl">
@@ -294,6 +347,7 @@ async function run() {
       </table>
       <div class="hn">
         {{ t('SSIM 1.000 表示與原片無異，0.98 以上一般肉眼看不出差別。因為 crf 是') }}<b>{{ t('品質目標') }}</b>{{ t('而不是壓縮率目標，所以一個值可以走遍全庫。') }}
+        {{ t('表裡是 H.264；選 H.265 時同一個數字對應到相同的畫質，只是檔案更小。') }}
       </div>
     </div>
 
@@ -306,11 +360,11 @@ async function run() {
         <tbody>
           <tr v-for="r in EDGE_TABLE" :key="r.name"><td>{{ t(r.name) }}</td>
             <td>{{ r.approx ? t('約 {n} 秒', { n: r.sec }) : t('{n} 秒', { n: r.sec }) }}</td>
-            <td>{{ r.only ? t('只省 {n}%', { n: r.save }) : r.approx ? t('約 {n}%', { n: r.save }) : r.save + '%' }}</td></tr>
+            <td>{{ r.approx ? t('約 {n}%', { n: r.save }) : r.save + '%' }}</td></tr>
         </tbody>
       </table>
       <div class="hn">
-        {{ t('表裡的 nvenc 是說明') }}<b>{{ t('為什麼沒有 GPU 選項') }}</b>{{ t('：它快兩三倍，但省下的空間不到一半，而這個功能的目的就是省空間。降幀率也試過，60→30 fps 省不到 1%，所以也沒有這個選項。') }}
+        {{ t('表裡是 H.264。降幀率也試過：60→30 fps 省不到 1%，所以沒有這個選項。') }}
       </div>
     </div>
 
@@ -380,6 +434,9 @@ async function run() {
         <div class="shead">
           {{ t('共 {n} 個候選', { n: items.length }) }} · {{ t('已選') }} <b>{{ picked.length }}</b>
           <template v-if="picked.length"> · {{ t('粗估可省 {size}', { size: fmtSize(pickedSaving) }) }}</template>
+          <span class="dim calib">{{ calN
+            ? t('（依目前設定，並以你實際壓過的 {n} 支校正）', { n: calN })
+            : t('（依目前設定；還沒有實際壓過的結果可以校正）') }}</span>
           <span class="spacer"></span>
           <button class="lnk" @click="setAll(true)">{{ t('全選') }}</button>
           <button class="lnk" @click="setAll(false)">{{ t('全不選') }}</button>
@@ -397,7 +454,7 @@ async function run() {
           <span class="c2">{{ i.width }}×{{ i.height }}</span>
           <span class="c3">{{ fmtDur(i.duration) }}</span>
           <span class="c4">{{ fmtSize(i.size) }}</span>
-          <span class="c5 save">{{ fmtSize(i.est_saving) }}</span>
+          <span class="c5 save">{{ fmtSize(est(i)) }}</span>
           <span class="fn" :title="i.path">{{ i.name }}</span>
           <button class="c6 lnk" :disabled="sampling || running"
                   @click.prevent="preview(i)">
@@ -445,7 +502,8 @@ async function run() {
             {{ p.saved > 0 ? t('省 {size}', { size: fmtSize(p.saved) }) : t('多 {size}', { size: fmtSize(-p.saved) }) }}</span>
         </div>
         <div class="pline sub">
-          <span v-if="p.kind === 'shrink'" class="dim">crf {{ p.crf }}<template
+          <span v-if="p.kind === 'shrink'" class="dim"><template
+            v-if="p.codec === 'h265'">H.265 · </template>crf {{ p.crf }}<template
             v-if="p.max_edge"> · {{ t('長邊 {n}', { n: p.max_edge }) }}</template></span>
           <span v-else-if="p.kind === 'conceal'" class="dim ib regs">
             {{ t('損壞處：') }}<template v-if="(p.regions || []).length">
@@ -501,6 +559,7 @@ async function run() {
 .scopebar { background: var(--card); border: 1px solid #444; border-radius: 6px;
   color: var(--text); font-size: 12px; padding: 6px 10px; margin: 0 16px 8px;
   cursor: pointer; text-align: left; }
+.calib { margin-left: 6px; font-size: 12px; }
 .scopebar .chg { color: var(--accent); margin-left: 8px; }
 /* Children never shrink: .wrap is the scroller, so anything taller than the
    dialog scrolls instead. With the default flex-shrink the picker block got
@@ -509,7 +568,9 @@ async function run() {
 .scopewrap { margin: 4px 16px 8px; padding: 12px 14px 2px; background: var(--card); border: 1px solid #ffffff0d; border-radius: 12px; }
 .scanbtn { flex-shrink: 0; white-space: nowrap; }
 .qmark.on { border-color: var(--accent); color: var(--accent); }
-.params .unit + .lab { margin-left: 12px; }
+.params .unit + .lab, .params .radio + .lab { margin-left: 12px; }
+.radio { display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
+  color: var(--text); }
 .opts { display: flex; align-items: center; gap: 8px; padding: 8px 0;
   font-size: 12px; flex-wrap: wrap; }
 .opts.params { margin: 0 16px 8px; padding: 10px 14px; background: var(--card); border: 1px solid #ffffff0d; border-radius: 12px; }
