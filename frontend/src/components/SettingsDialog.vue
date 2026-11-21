@@ -7,13 +7,14 @@ import RoleManager from './RoleManager.vue'
 import CacheHelp from './CacheHelp.vue'
 import Icon from './Icon.vue'
 import SideDialog from './SideDialog.vue'
+import FolderListEditor from './FolderListEditor.vue'
 import { t, N_ } from '../i18n'
 import { ts } from '../serverstrings.js'
 
 const emit = defineEmits(['close'])
 
-const inbox = ref('')
-const archive = ref('')
+const inbox = ref([])
+const archive = ref([])
 const defaultArchive = ref('')
 const defaultTab = ref('videos')
 const seekSeconds = ref(10)
@@ -239,17 +240,13 @@ function fmtWhen(iso) {
 }
 
 // keep the default-root dropdown in sync with whatever is typed above
-const archiveRootList = computed(() =>
-  archive.value.split('\n').map(l => l.trim()).filter(Boolean))
-
-function toLines(arr) { return (arr || []).join('\n') }
-function fromLines(s) { return s.split('\n').map(l => l.trim()).filter(Boolean) }
+const archiveRootList = computed(() => archive.value)
 
 async function load() {
   try {
     const s = await api('/api/settings')
-    inbox.value = toLines(s.inbox_paths)
-    archive.value = toLines(s.archive_roots)
+    inbox.value = [...(s.inbox_paths || [])]
+    archive.value = [...(s.archive_roots || [])]
     defaultArchive.value = s.default_archive_root || ''
     defaultTab.value = s.default_browse_tab || 'videos'
     seekSeconds.value = s.seek_seconds ?? 10
@@ -276,8 +273,8 @@ async function save() {
     await api('/api/settings', {
       method: 'POST',
       body: JSON.stringify({
-        inbox_paths: fromLines(inbox.value),
-        archive_roots: fromLines(archive.value),
+        inbox_paths: inbox.value,
+        archive_roots: archive.value,
         default_archive_root: defaultArchive.value.trim(),
         default_browse_tab: defaultTab.value,
         seek_seconds: Number(seekSeconds.value) || 10,
@@ -618,12 +615,13 @@ onMounted(load)
           <div class="sec">{{ t('資料夾') }}</div>
           <div class="card">
             <div class="item">
-              <label class="lab">{{ t('待分類資料夾（新影片放這裡，每行一個）') }}</label>
-              <textarea v-model="inbox" rows="3" placeholder="D:\PORN"></textarea>
+              <label class="lab">{{ t('待分類資料夾（新影片放這裡）') }}</label>
+              <FolderListEditor v-model="inbox" kind="inbox" :all-paths="[...inbox, ...archive]" />
             </div>
             <div class="item">
-              <label class="lab">{{ t('歸檔根目錄（角色資料夾會建在這些位置下，每行一個）') }}</label>
-              <textarea v-model="archive" rows="4" placeholder="G:\Social Media"></textarea>
+              <label class="lab">{{ t('歸檔根目錄（角色資料夾會建在這些位置下）') }}</label>
+              <FolderListEditor v-model="archive" kind="archive" :default-root="defaultArchive"
+                                :all-paths="[...inbox, ...archive]" />
             </div>
             <div class="item">
               <label class="lab">{{ t('新角色資料夾預設建在哪個根目錄') }}</label>

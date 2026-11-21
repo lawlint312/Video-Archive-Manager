@@ -1,6 +1,6 @@
 <script setup>
 import { onMounted, ref, computed, watch } from 'vue'
-import { api, errText } from './api'
+import { api, errText, onSessionGone } from './api'
 import { store, can, setStatus, setBusy, logArchived, resetUserState } from './store'
 import { followScan } from './convertscan'
 import { clearCharStats } from './charstats'
@@ -10,6 +10,7 @@ import { resumeScan } from './dedup'
 import { resumeScan as resumeImgScan } from './imgdedup'
 import { t, LOCALES, i18n, setLocale } from './i18n'
 import LoginView from './components/LoginView.vue'
+import RootWait from './components/RootWait.vue'
 import CharacterSidebar from './components/CharacterSidebar.vue'
 import VideoGrid from './components/VideoGrid.vue'
 import ProfileTab from './components/ProfileTab.vue'
@@ -255,6 +256,15 @@ function onPasswordChanged() {
   store.loginNotice = t('密碼已修改，請用新密碼重新登入')
   store.user = null
 }
+
+// Any request finding the session gone (it expired, or was ended from 登入中
+// 的裝置) drops back to sign-in with a line saying why — not an alert per
+// button that reads "not authenticated".
+onSessionGone.fn = () => {
+  if (!store.user) return
+  store.loginNotice = t('登入已過期，請重新登入')
+  store.user = null
+}
 const showGroups = ref(false)
 const sidebarKey = ref(0)   // bump to force sidebar reload after settings change
 
@@ -400,7 +410,7 @@ onMounted(checkAuth)
 </script>
 
 <template>
-  <div v-if="!ready" class="boot">{{ t('載入中…') }}</div>
+  <div v-if="!ready" class="boot">{{ t('載入中…') }}<RootWait /></div>
 
   <LoginView v-else-if="!store.user" />
 

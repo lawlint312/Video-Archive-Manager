@@ -193,12 +193,14 @@ onMounted(async () => {
            list was already open below it — so the label described a screen
            that does not exist. The video tab has worked this way all along. -->
       <div v-if="!scopeOpen && !showHistory" class="barrow">
-        <button class="scopebar" @click="reopenScope">
+        <!-- disabled while scanning: it would open a picker that cannot be used -->
+        <button class="scopebar" :disabled="d.running" @click="reopenScope">
         <Icon name="chevronRight" :size="13" />
         {{ t('範圍：待分類 {inbox} · 歸檔 {chars}', { inbox: inboxOn, chars: charsOn }) }}
         <span class="thrtag">{{ t('門檻 {n}', { n: distance }) }}</span>
         <span v-if="d.savedAt" class="oldtag">{{ t('上次掃描 {time}', { time: fmtWhen(d.savedAt) }) }}</span>
-        <span class="chg">{{ t('重新掃描') }}</span>
+        <span v-if="d.running" class="chg off">{{ t('掃描結束後可重新選擇範圍') }}</span>
+        <span v-else class="chg">{{ t('重新掃描') }}</span>
         </button>
         <button class="histbtn" :title="t('之前的掃描報告')" @click="showHistory = true">
           <Icon name="history" :size="13" /> {{ t('歷史紀錄') }}</button>
@@ -384,6 +386,8 @@ onMounted(async () => {
   cursor: pointer; text-align: left; }
 .scopebar:hover { color: var(--text); }
 .scopebar .chg { margin-left: auto; color: var(--accent); }
+.scopebar:disabled { cursor: default; }
+.scopebar .chg.off { color: var(--dim); }
 .thrtag { color: #f9e2af; }
 .oldtag { color: var(--dim); font-size: 11px; }
 /* The options area is a card; the report below stays as it was.

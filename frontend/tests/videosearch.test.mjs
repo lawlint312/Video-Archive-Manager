@@ -137,5 +137,38 @@ console.log('\na new index is searched, not the old one')
   check('replaced index', V.searchVideos('abp').total, 2)
 }
 
+console.log('\nfull-width letters and digits match what you type')
+{
+  V.videoIndex.rows = [
+    ['獨佔販売西麻布の高級ラウンジ嬢登場！！、時給８０００円.ts', '', 2, 1, ''],
+    ['ＳＴＡＲＳ－７８６.mp4', 'X', 0, 0, ''],
+    ['ABP-001.mp4', 'X', 0, 0, 'ｶﾞﾁ素人'],
+  ]
+  check('typed as written', V.searchVideos('時給８０００円').inbox.length, 1)
+  check('half-width digits', V.searchVideos('時給8000円').inbox.length, 1)
+  check('a run of the title', V.searchVideos('獨佔販売西麻布の高級').inbox.length, 1)
+  check('full-width catalogue number', V.searchVideos('stars786').total, 1)
+  check('half-width katakana in a title', V.searchVideos('ガチ').total, 1)
+}
+
+console.log('\nthe index is fetched again when a search starts, at most every 20 s')
+{
+  const calls = []
+  globalThis.fetch = async (path) => {
+    calls.push(path)
+    return { ok: true, headers: { get: () => 'application/json' }, json: async () => ({ dirs: ['C:\\Downloads'], v: [['NEW-001.mp4', '', 0, 1, '']] }) }
+  }
+  V.videoIndex.ready = false
+  await V.loadVideoIndex()
+  check('first load', calls.length, 1)
+  V.freshenVideoIndex()
+  check('just fetched: not again', calls.length, 1)
+  await new Promise(r => setTimeout(r, 5))
+  V.freshenVideoIndex(1)
+  await new Promise(r => setTimeout(r, 5))
+  check('older than maxAge: fetched again', calls.length, 2)
+  check('and searched', V.searchVideos('new-001').inbox.length, 1)
+}
+
 console.log(failed ? `\nFAIL (${failed})` : '\nPASS')
 process.exit(failed ? 1 : 0)

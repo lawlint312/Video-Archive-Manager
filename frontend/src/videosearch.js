@@ -25,12 +25,16 @@ export const videoIndex = reactive({
   loading: false,
 })
 
+// when the loaded index was fetched; not reactive, nothing draws it
+let fetchedAt = 0
+
 export async function loadVideoIndex(force = false) {
   if (videoIndex.loading) return
   if (videoIndex.ready && !force) return
   videoIndex.loading = true
   try {
     const d = await api('/api/search/index')
+    fetchedAt = Date.now()
     videoIndex.dirs = d.dirs || []
     // raw: 16,000 rows are only ever replaced whole, never edited, so a deep
     // proxy per row buys nothing and slows every read of the scan
@@ -41,6 +45,18 @@ export async function loadVideoIndex(force = false) {
   } catch { /* search simply stays name-only */ } finally {
     videoIndex.loading = false
   }
+}
+
+/**
+ * Fetch the index again if the copy here is older than `maxAge` ms — called
+ * when a search starts. The sidebar only fetched on mount, so a video
+ * downloaded while the page stayed open was never searchable until a reload,
+ * although the inbox grid already showed it. The server notices new inbox
+ * files by itself (searchindex._inbox_moved) and answers `stale` while it
+ * rebuilds, which `loadVideoIndex` already follows up on.
+ */
+export function freshenVideoIndex(maxAge = 20000) {
+  if (videoIndex.ready && Date.now() - fetchedAt > maxAge) loadVideoIndex(true)
 }
 
 export function clearVideoIndex() {
@@ -62,7 +78,16 @@ export function fullPath(row) {
  * usually finds nothing.
  */
 export function normalize(s) {
-  return (s || '').toLowerCase().replace(/[^a-z0-9぀-ヿ一-鿿]+/g, '')
+  return fold(s).replace(/[^a-z0-9぀-ヿ一-鿿]+/g, '')
+}
+
+/**
+ * Lowercase, and full-width letters and digits made ordinary: Japanese titles
+ * write 時給８０００円 and ＳＴＡＲＳ, and nobody types those. NFKC also joins
+ * half-width katakana (ｶﾞ → ガ). Applied to the query and the keys alike.
+ */
+export function fold(s) {
+  return (s || '').normalize('NFKC').toLowerCase()
 }
 
 // [name, title, normalised name without its extension, normalised title,
@@ -75,9 +100,9 @@ function keysFor(rows) {
       rows, length: rows.length,
       keys: rows.map(r => {
         const name = r[0] || '', title = r[4] || ''
-        return [name.toLowerCase(), title.toLowerCase(),
+        return [fold(name), fold(title),
                 normalize(name.replace(/\.[^.]+$/, '')), normalize(title),
-                (r[1] || '').toLowerCase(), (r[5] || '').toLowerCase()]
+                fold(r[1]), fold(r[5])]
       }),
     }
   }
@@ -130,7 +155,7 @@ const byRank = (a, b) => a.s - b.s || a.i - b.i
  * 200 files should not bury every other result.
  */
 export function searchVideos(q, { limit = 400, perChar = 3 } = {}) {
-  const needle = (q || '').trim().toLowerCase()
+  const needle = fold(q).trim()
   if (needle.length < 2) return { byChar: new Map(), inbox: [], total: 0 }
   const qn = normalize(needle)
   const words = needle.split(/\s+/).filter(Boolean).map(w => [w, normalize(w)])

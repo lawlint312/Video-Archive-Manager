@@ -81,5 +81,21 @@ check('null', errText(null), '未知的錯誤')
 check('an empty object — the case that printed undefined', errText({}),
       '未知的錯誤')
 
+console.log('\nthe session ended under an open page: back to sign-in, once per answer')
+const { onSessionGone } = await import('../src/api.js')
+let gone = 0
+onSessionGone.fn = () => { gone++ }
+await detailOf('/api/groups', 401, { detail: 'not authenticated' })
+check('cookie already dropped by the browser', gone, 1)
+await detailOf('/api/groups', 401, { detail: 'session invalid or expired' })
+check('session ended on the server', gone, 2)
+await detailOf('/api/auth/login', 401, { detail: 'invalid credentials' })
+check('a wrong password is not a lost session', gone, 2)
+await detailOf('/api/settings', 403, { detail: 'admin permission required' })
+check('no permission is not a lost session', gone, 2)
+check('the caller still gets the error',
+      await detailOf('/api/groups', 401, { detail: 'not authenticated' }), '登入已過期，請重新登入')
+onSessionGone.fn = null
+
 console.log(failed ? `\nFAIL (${failed})` : '\nPASS')
 process.exit(failed ? 1 : 0)

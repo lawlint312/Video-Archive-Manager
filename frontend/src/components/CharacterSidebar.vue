@@ -6,7 +6,8 @@ import { charStats, loadCharStats } from '../charstats'
 import { isOpen, toggleGroup, openGroup, setAllGroups, groupData, applyGroups,
          loadGroups } from '../groups'
 import { viewForChar, pickTab } from '../groupview'
-import { loadVideoIndex, searchVideos, fullPath, videoIndex } from '../videosearch'
+import { loadVideoIndex, searchVideos, fullPath, videoIndex,
+         freshenVideoIndex } from '../videosearch'
 import Icon from './Icon.vue'
 import { t } from '../i18n'
 import { ts } from '../serverstrings.js'
@@ -266,6 +267,9 @@ const searching = computed(() => !!filter.value.trim())
 // one of its *files* matched, so the row shows which file — the same reason
 // an alias hit shows the alias: an unexplained result looks arbitrary.
 const vhits = computed(() => searchVideos(filter.value))
+// a video downloaded since the index was fetched should be findable without a
+// reload; at most one fetch per 20 s however fast you type
+watch(filter, q => { if (q.trim()) freshenVideoIndex() })
 function videoHit(name) { return vhits.value.byChar.get(name) || null }
 function shown(name) { return searching.value || isOpen(name) }
 

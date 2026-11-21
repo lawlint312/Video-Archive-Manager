@@ -240,8 +240,7 @@ export const TEMPLATES = [
   N_('輸出的像素格式仍不支援（{pix}）'),
 
   // ── progress ──
-  N_('{check}：{name}（{k}/{total}，另 {n} 支沿用上次結果）'),
-  N_('{check}：{name}（{k}/{total}）'),
+  N_('另 {n} 支沿用上次結果'),
   N_('掃描：{name}'),
   N_('上次共 {n} 個'),
   N_('上次共 {n} 張'),

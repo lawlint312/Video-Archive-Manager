@@ -23,7 +23,7 @@ import os
 import threading
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from ..config import DATA_DIR
 from . import javdb, media, filetitle, videoflags, costar
@@ -31,11 +31,20 @@ from . import javdb, media, filetitle, videoflags, costar
 log = logging.getLogger("vam")
 
 TTL = 600.0
+# How often a request may look at the inbox folders' mtimes (`_inbox_moved`).
+INBOX_CHECK = 15.0
 _FILE = DATA_DIR / "search_index.json"
 
 _lock = threading.Lock()
 _cache: Optional[dict] = None
+# Told about the videos whose `.nfo` is new, changed or moved since the last
+# walk: `on_nfo([(video, character), ...], roots)`, on a thread of its own.
+# main.py reads them in (only filling what VAM does not know yet). Before
+# this an NFO was only read when someone ran the import in 角色查詢, and a
+# video downloaded with its NFO showed no title (2026-11-16).
+on_nfo: Optional[Callable[[list, List[Path]], None]] = None
 _refreshing = False
+_checked_at = 0.0
 
 
 def _compute(roots: List[Path], inbox: List[Path]) -> dict:
@@ -56,7 +65,13 @@ def _compute(roots: List[Path], inbox: List[Path]) -> dict:
         log.exception("search index: co-star names unavailable")
         named = {}
 
+    nfo_files: dict = {}
+    with_nfo: dict = {}     # {video path: [its .nfo's mtime, character]}
+
     def add(path: Path, char: str, inbox_flag: int):
+        m = nfo_files.get(str(path.with_suffix(".nfo")).lower())
+        if m is not None:
+            with_nfo[str(path)] = [m, char]
         d = str(path.parent)
         idx = dirs.get(d)
         if idx is None:
@@ -71,13 +86,76 @@ def _compute(roots: List[Path], inbox: List[Path]) -> dict:
 
     for c in media.list_characters(roots):
         for p in c["paths"]:
-            for path, _size, _mtime in media.scan_videos_with_stat(Path(p)):
+            for path, _size, _mtime in media.scan_videos_with_stat(
+                    Path(p), nfos=nfo_files):
                 add(path, c["name"], 0)
+    box_dirs: dict = {}
     for p in inbox:
-        for path, _size, _mtime in media.scan_videos_with_stat(p):
+        for path, _size, _mtime in media.scan_videos_with_stat(
+                p, dirs=box_dirs, nfos=nfo_files):
             add(path, "", 1)
 
-    return {"dirs": list(dirs), "v": rows, "at": time.time()}
+    return {"dirs": list(dirs), "v": rows, "at": time.time(),
+            "inbox_dirs": box_dirs, "nfo": with_nfo}
+
+
+def nfo_changes(old: Optional[dict], new: dict) -> list:
+    """[(video, character)] whose NFO the last walk had not seen as it is now:
+    a new file, one rewritten since, or a video that moved (its path is new).
+    An index from before NFOs were noted counts as having seen none, so the
+    first walk after the upgrade reads every NFO in once."""
+    before = (old or {}).get("nfo")
+    out = []
+    for p, (m, char) in new.get("nfo", {}).items():
+        if before is None or (before.get(p) or [None])[0] != m:
+            out.append((Path(p), char))
+    return out
+
+
+def _announce(old: Optional[dict], new: dict, roots: List[Path]):
+    hook = on_nfo
+    found = nfo_changes(old, new) if hook else []
+    if not found:
+        return
+
+    def run():
+        try:
+            hook(found, roots)
+        except Exception:
+            log.exception("reading new NFO files failed")
+    threading.Thread(target=run, daemon=True).start()
+
+
+def _inbox_moved(cached: dict, inbox: List[Path]) -> bool:
+    """Has anything arrived in, left or been renamed in an inbox folder since
+    the index was built?
+
+    The TTL alone missed downloads: a video that finished a minute after the
+    index was built stayed unsearchable for up to ten minutes, although the
+    inbox grid (which lists the folder live) already showed it. Archiving and
+    deleting go through `invalidate()`, but nothing tells the server about a
+    browser or a torrent client writing into Downloads. A folder's mtime moves
+    whenever a file in it is created, renamed or deleted, so a stat per inbox
+    folder answers "would a walk find something new" without the walk — a few
+    hundred local stats, well under a millisecond each. A new subfolder moves
+    its parent's mtime, so folders the last walk never saw are covered too.
+
+    Only the inbox: archive folders change through VAM itself, and there are
+    over a thousand of them, many on the NAS.
+    """
+    seen = cached.get("inbox_dirs")
+    if seen is None:
+        return True                 # built before this existed
+    if any(str(p) not in seen for p in inbox):
+        return True                 # an inbox folder was added in settings
+    for d, mtime in seen.items():
+        try:
+            now = os.stat(d).st_mtime
+        except OSError:
+            now = None              # gone, or a drive that is not mounted
+        if now != mtime:
+            return True
+    return False
 
 
 def _read_disk() -> Optional[dict]:
@@ -102,8 +180,9 @@ def _refresh(roots: List[Path], inbox: List[Path]):
     try:
         data = _compute(roots, inbox)
         with _lock:
-            _cache = data
+            old, _cache = _cache, data
         _write_disk(data)
+        _announce(old, data, roots)
     except Exception:
         log.exception("search-index refresh failed")
     finally:
@@ -158,7 +237,7 @@ def get(roots: List[Path], inbox: List[Path], scoped: bool = False) -> dict:
     one nor read someone else's. It used to walk that user's folders on every
     call (4 s over the NAS, uncached), and the sidebar asks on every remount.
     """
-    global _cache, _refreshing
+    global _cache, _refreshing, _checked_at
 
     if scoped:
         from .. import settings
@@ -175,9 +254,18 @@ def get(roots: List[Path], inbox: List[Path], scoped: bool = False) -> dict:
         with _lock:
             _cache = data
         _write_disk(data)
-        return {**data, "stale": False}
+        _announce(None, data, roots)
+        return {**_public(data), "stale": False}
 
-    stale = (time.time() - cached.get("at", 0)) > TTL
+    # an index from before NFOs were noted is rebuilt at once, not at the
+    # TTL: until then nothing is read in by itself
+    stale = (time.time() - cached.get("at", 0)) > TTL or "nfo" not in cached
+    if not stale and time.time() - _checked_at > INBOX_CHECK:
+        _checked_at = time.time()
+        if _inbox_moved(cached, inbox):
+            stale = True
+            with _lock:
+                cached["at"] = 0.0      # stays stale until the rebuild lands
     if stale:
         with _lock:
             if not _refreshing:
@@ -185,7 +273,13 @@ def get(roots: List[Path], inbox: List[Path], scoped: bool = False) -> dict:
                 threading.Thread(target=_refresh,
                                  args=(list(roots), list(inbox)),
                                  daemon=True).start()
-    return {**cached, "stale": stale}
+    return {**_public(cached), "stale": stale}
+
+
+def _public(data: dict) -> dict:
+    """The index without the server's own bookkeeping: the inbox folder list
+    is hundreds of paths the browser has no use for — nor the NFO list."""
+    return {k: v for k, v in data.items() if k not in ("inbox_dirs", "nfo")}
 
 
 def invalidate():

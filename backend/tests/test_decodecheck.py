@@ -391,7 +391,7 @@ def test_scan_and_cache(tmp: Path):
 
     calls = []
     real = decodecheck.decode
-    decodecheck.decode = lambda p, gpu=False, stop=None: (
+    decodecheck.decode = lambda p, gpu=False, stop=None, on_time=None: (
         calls.append(p.name), real(p, gpu, stop))[1]
     try:
         convert.scan([lib], check_decode=True, decode_cache=db)
@@ -417,17 +417,20 @@ def test_stop(tmp: Path):
 
     class Prog:
         cancelled = False
-        def __init__(self): self.n = 0
         def __call__(self, msg):
-            if msg.startswith("完整解碼檢查"):
-                self.n += 1
-                if self.n >= 2:
-                    Prog.cancelled = True
+            pass        # progress is throttled now: it cannot mark "after 2"
 
     calls = []
     real = decodecheck.decode
-    decodecheck.decode = lambda p, gpu=False, stop=None: (
-        calls.append(p.name), real(p, gpu, stop))[1]
+
+    def decode(p, gpu=False, stop=None, on_time=None):
+        n = real(p, gpu, stop)
+        calls.append(p.name)
+        if len(calls) >= 2:
+            Prog.cancelled = True       # pressed once the second one is done
+        return n
+
+    decodecheck.decode = decode
     convert.DECODE_WORKERS, saved = 1, convert.DECODE_WORKERS
     try:
         rows = convert.scan([lib], progress=Prog(), check_decode=True)
@@ -492,7 +495,7 @@ def test_long_files_alone(tmp: Path):
     length = {"short": 30.0, "long": 3 * 3600.0, "unknown": 0.0}
     running, seen, lock = [], [], threading.Lock()
 
-    def fake(p, gpu=False, stop=None):
+    def fake(p, gpu=False, stop=None, on_time=None):
         with lock:
             running.append(p.stem)
             seen.append(list(running))
@@ -547,7 +550,7 @@ def test_gpu_fallback():
     calls = []
 
     def fake(gpu_reply):
-        def _run(path, gpu, stop=None):
+        def _run(path, gpu, stop=None, on_time=None):
             calls.append("gpu" if gpu else "cpu")
             return gpu_reply if gpu else R(0, "")
         return _run

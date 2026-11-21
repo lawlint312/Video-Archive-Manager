@@ -69,7 +69,9 @@ def popen_background(cmd, **kw) -> subprocess.Popen:
 
 # ── Scanning ─────────────────────────────────────────────────────────────────
 
-def scan_videos_with_stat(root: Path, posters: Optional[dict] = None
+def scan_videos_with_stat(root: Path, posters: Optional[dict] = None,
+                          dirs: Optional[dict] = None,
+                          nfos: Optional[dict] = None
                           ) -> List[Tuple[Path, int, float]]:
     """Recursively scan for videos via os.scandir → (path, size, mtime).
 
@@ -79,17 +81,35 @@ def scan_videos_with_stat(root: Path, posters: Optional[dict] = None
     thumbnail a month — which also means a cover downloaded later would not
     show for a month. With the cover's mtime in the URL it shows at once. On
     Windows `DirEntry.stat()` comes with the listing: no extra request.
+
+    `dirs`, when given, is filled with {folder path: mtime} of every folder
+    the walk entered, the root included (None when it cannot be read). A
+    folder's mtime moves when a file in it is created, renamed or deleted, so
+    comparing these later says whether a walk would find something new
+    without walking (`searchindex` does this for the inbox).
+
+    `nfos`, when given, is filled with {lower-case path: mtime} of every
+    `.nfo` file the walk passes — so the search index can notice a new or
+    changed one and read it in (`searchindex.on_nfo`) without a second walk.
     """
     result: List[Tuple[Path, int, float]] = []
 
-    def _walk(dir_path: str):
+    def _walk(dir_path: str, mtime: Optional[float] = None):
+        if dirs is not None:
+            if mtime is None:
+                try:
+                    mtime = os.stat(dir_path).st_mtime
+                except OSError:
+                    mtime = None
+            dirs[dir_path] = mtime
         try:
             with os.scandir(dir_path) as it:
                 for entry in it:
                     try:
                         if entry.is_dir(follow_symlinks=False):
                             if not entry.name.startswith('.'):
-                                _walk(entry.path)
+                                _walk(entry.path, entry.stat().st_mtime
+                                      if dirs is not None else None)
                         elif entry.is_file(follow_symlinks=False):
                             suf = Path(entry.name).suffix.lower()
                             if suf in VIDEO_EXT:
@@ -100,6 +120,8 @@ def scan_videos_with_stat(root: Path, posters: Optional[dict] = None
                                 st = entry.stat()
                                 if st.st_size > 0:
                                     posters[entry.path.lower()] = st.st_mtime
+                            elif nfos is not None and suf == ".nfo":
+                                nfos[entry.path.lower()] = entry.stat().st_mtime
                     except OSError:
                         continue
         except OSError:
@@ -486,15 +508,18 @@ def list_characters(roots: List[Path]) -> List[dict]:
     "merged" entry holding every path (the desktop app shows these with a ⚠ and
     the drive letters, e.g. "Urabukkake (F:+G:+K:)").
     """
+    from . import rootprobe
     by_name: dict = {}
-    for root in roots:
-        try:
-            with os.scandir(str(root)) as it:
-                for e in it:
-                    if e.is_dir(follow_symlinks=False) and not e.name.startswith('.'):
-                        by_name.setdefault(e.name, []).append(e.path)
-        except OSError:
-            continue
+    with rootprobe.track("list", len(roots)) as probe:
+        for root in roots:
+            probe.at(root)
+            try:
+                with os.scandir(str(root)) as it:
+                    for e in it:
+                        if e.is_dir(follow_symlinks=False) and not e.name.startswith('.'):
+                            by_name.setdefault(e.name, []).append(e.path)
+            except OSError:
+                continue
 
     # A folder that cannot be opened is not a second copy of anything. This
     # happens after a merge on a Synology share: the emptied source goes to

@@ -204,14 +204,23 @@ def test_stop_keeps_what_was_checked(tmp: Path):
         cancelled = False
 
         def __call__(self, msg):
-            self.cancelled = True          # stop after the first file
+            pass
+
+    prog = Prog()
+
+    def first_then_stop(path):
+        # the stop button, pressed while the first file is being checked
+        # (progress messages are throttled now, so they cannot mark "after")
+        v = convert._blank_check(path)
+        prog.cancelled = True
+        return v
 
     # one worker, so "after the first file" is exact (8 would all have started)
     paths = sorted(lib.iterdir())
     store = checkcache.Store(db)
     try:
-        got = convert._run_checks(paths, convert._blank_check, "blanks", "x",
-                                  store=store, progress=Prog(), stoppable=True,
+        got = convert._run_checks(paths, first_then_stop, "blanks", "x",
+                                  store=store, progress=prog, stoppable=True,
                                   keep=lambda v: v is not convert._UNREAD, workers=1)
     finally:
         store.close()
@@ -270,10 +279,33 @@ def test_over_http(tmp: Path):
         main.app.dependency_overrides.clear()
 
 
+def test_commit_in_time(tmp: Path):
+    """A batch of 50 is hours of NAS files; a restart rolled all of it back."""
+    print("\n慢的檢查：不等湊滿一批，隔幾秒就寫進資料庫")
+    import sqlite3
+    db = tmp / "checks.sqlite3"
+    f = tmp / "a.mp4"
+    f.write_bytes(b"x")
+    seen = lambda: sqlite3.connect(str(db)).execute(
+        "SELECT COUNT(*) FROM results").fetchone()[0]
+    saved = checkcache.COMMIT_SECONDS
+    store = checkcache.Store(db)
+    try:
+        checkcache.COMMIT_SECONDS = 3600
+        store.put("blanks", 1, f, 1, 1.0, None)
+        check(seen() == 0, "還沒到時間、也沒湊滿：別的連線看不到（這就是會被丟掉的）")
+        checkcache.COMMIT_SECONDS = 0
+        store.put("probe", 1, f, 1, 1.0, None)
+        check(seen() == 2, "到時間就寫入：程式被結束也還在")
+    finally:
+        checkcache.COMMIT_SECONDS = saved
+        store.close()
+
+
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")
     for fn in (test_reuse, test_found_problem_is_kept, test_unreadable_not_remembered,
-               test_stop_keeps_what_was_checked, test_over_http):
+               test_stop_keeps_what_was_checked, test_commit_in_time, test_over_http):
         d = Path(tempfile.mkdtemp())
         try:
             fn(d)

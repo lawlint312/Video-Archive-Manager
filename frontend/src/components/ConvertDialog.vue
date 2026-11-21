@@ -13,6 +13,7 @@ import { ts } from '../serverstrings.js'
 import VideoPlayer from './VideoPlayer.vue'
 import DupHistory from './DupHistory.vue'
 import SideDialog from './SideDialog.vue'
+import ScanProgress from './ScanProgress.vue'
 
 const emit = defineEmits(['close', 'done'])
 
@@ -139,7 +140,8 @@ onMounted(async () => {
       const { scan } = await api('/api/convert/scan/active')
       if (scan && alive && !cs.jobId) {
         showOptions(scan.options)
-        followScan(scan.job_id, scan.options, scan.progress || t('掃描中…'),
+        followScan(scan.job_id, { ...scan.options, roots: scan.roots || [] },
+                   scan.progress || t('掃描中…'),
                    !!scan.stopping)
       }
     } catch { /* an older backend: start a new scan as before */ }
@@ -177,6 +179,15 @@ function whenShort(t) {
   return `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 const scanning = computed(() => !!cs.jobId)
+// What the running scan covers, said in the bar that replaces the picker
+// while it runs (the picker cannot be used then, so it is not shown). Empty
+// for a scan started by a server from before the roots were kept.
+const scanScope = computed(() => {
+  const names = ((cs.options && cs.options.roots) || [])
+    .map(p => String(p).split(/[\\/]/).filter(Boolean).pop() || String(p))
+  if (names.length <= 3) return names.join('、')
+  return t('{names} 等 {n} 個資料夾', { names: names.slice(0, 2).join('、'), n: names.length })
+})
 const running = ref(false)
 const progress = ref('')
 const pct = ref(0)
@@ -280,7 +291,7 @@ async function scan() {
       method: 'POST',
       body: JSON.stringify({ roots: selected.value, ...options }),
     })
-    followScan(job_id, options, t('啟動中…'))
+    followScan(job_id, { ...options, roots: [...selected.value] }, t('啟動中…'))
   } catch (e) {
     error.value = t('掃描失敗：') + errText(e)
   }
@@ -397,7 +408,16 @@ const DAMAGE = { 輕微: N_('輕微'), 中等: N_('中等'), 嚴重: N_('嚴重'
            pushes everything under it out of reach. -->
       <div v-else class="tabbody">
 
-      <div v-if="!scopeOpen && !showHistory" class="barrow">
+      <!-- While a scan runs the picker and its options are all disabled, so
+           they are not shown at all (the user's call): just what is being
+           scanned, and the progress below. -->
+      <div v-if="scanning && !showHistory" class="barrow">
+        <div class="scopebar static">
+          <template v-if="scanScope">{{ t('掃描範圍：{names}', { names: scanScope }) }}</template>
+          <span class="chg">{{ t('掃描結束後可重新選擇範圍') }}</span>
+        </div>
+      </div>
+      <div v-else-if="!scopeOpen && !showHistory" class="barrow">
         <button class="scopebar" @click="scopeOpen = true">
           <Icon name="chevronRight" :size="13" />
           <template v-if="historyId">{{ t('歷史紀錄：{time} 的掃描（已處理的不再列出）', { time: whenShort(historyAt) }) }}</template>
@@ -411,7 +431,7 @@ const DAMAGE = { 輕微: N_('輕微'), 中等: N_('中等'), 嚴重: N_('嚴重'
                   endpoint="/api/convert/history" unit="個" :current="historyId"
                   @open="openHistory" @close="showHistory = false" />
 
-      <div v-show="scopeOpen && !showHistory" class="scopewrap">
+      <div v-show="scopeOpen && !showHistory && !scanning" class="scopewrap">
         <div v-if="lastScan && lastScan.remaining && !items" class="lastscan ib">
           <Icon name="history" :size="13" />
           {{ t('上次掃描（{time}）還有 {n} 個待處理', { time: whenShort(lastScan.at), n: lastScan.remaining }) }}
@@ -456,12 +476,12 @@ const DAMAGE = { 輕微: N_('輕微'), 中等: N_('中等'), 嚴重: N_('嚴重'
           <label class="chk">
             <input type="checkbox" v-model="checkDecode"
                    :disabled="scanning || running" />
-            {{ t('完整解碼檢查，找出畫面損壞的影片（每支約 4 秒，建議只選少數資料夾）') }}
+            {{ t('完整解碼檢查，找出畫面損壞的影片（建議只選少數資料夾）') }}
           </label>
           <label class="chk">
             <input type="checkbox" v-model="checkBlanks"
                    :disabled="scanning || running" />
-            {{ t('檢查錄影中斷，找出中間一大段沒有畫面也沒有聲音的錄影（每支約 1 秒）') }}
+            {{ t('檢查錄影中斷，找出中間一大段沒有畫面也沒有聲音的錄影') }}
           </label>
           <label class="chk">
             <input type="checkbox" v-model="recheck"
@@ -497,10 +517,14 @@ const DAMAGE = { 輕微: N_('輕微'), 中等: N_('中等'), 嚴重: N_('嚴重'
         </div>
       </div>
 
-      <div v-if="scanning || running" class="prog">
-        <Icon name="spinner" :size="13" class="spin" /> {{ scanning ? ts(cs.progress) : progress }}
-        <button v-if="scanning && (checkDecode || checkBlanks)" class="lnk" :disabled="cs.stopping"
-                @click="stopScan">{{ cs.stopping ? t('停止中…') : t('停止') }}</button>
+      <!-- The scan reports a phase per check with a bar (convert.ScanProgress);
+           it used to be one line per finished file, which said nothing at all
+           while the first file of a check was being read over the NAS. Only
+           the checks that read the stop flag get a stop button. -->
+      <ScanProgress v-if="scanning" :progress="cs.progress" :stopping="cs.stopping"
+                    :can-stop="checkDecode || checkBlanks" @stop="stopScan" />
+      <div v-else-if="running" class="runprog">
+        <Icon name="spinner" :size="13" class="spin" /> {{ progress }}
         <!-- This used to promise the job continues in the background, copied
              from the duplicate-scan dialog where it is true — that one keeps
              its polling in dedup.js and its state in the store. The converter
@@ -512,9 +536,7 @@ const DAMAGE = { 輕微: N_('輕微'), 中等: N_('中等'), 嚴重: N_('嚴重'
              closing no longer loses the result either: it finishes in the
              background, reopening the dialog while it runs picks it back up,
              and once done it opens from 歷史紀錄. -->
-        <span class="bg">{{ running
-          ? t('轉檔進行中，無法關閉此視窗')
-          : t('可關閉此視窗，掃描會在背景繼續') }}</span>
+        <span class="bg">{{ t('轉檔進行中，無法關閉此視窗') }}</span>
       </div>
       <div v-if="running" class="bar"><div class="fill" :style="{ width: pct + '%' }"></div></div>
       <div v-if="error" class="err">{{ error }}</div>
@@ -828,6 +850,8 @@ const DAMAGE = { 輕微: N_('輕微'), 中等: N_('中等'), 嚴重: N_('嚴重'
   cursor: pointer; text-align: left; }
 .scopebar:hover { color: var(--text); }
 .scopebar .chg { margin-left: auto; color: var(--accent); }
+.scopebar.static { cursor: default; color: var(--text); }
+.scopebar.static .chg { color: var(--dim); }
 /* the options area is a card, like the settings dialog's; the result lists
    below it stay as they were */
 .scopewrap { margin: 4px 16px 8px; padding: 12px 14px 2px; background: var(--card); border: 1px solid #ffffff0d; border-radius: 12px; }
@@ -841,9 +865,12 @@ const DAMAGE = { 輕微: N_('輕微'), 中等: N_('中等'), 嚴重: N_('嚴重'
 .spacer { flex: 1; }
 .tip { color: var(--dim); font-size: 11px; padding: 0 0 12px; }
 
-.prog { padding: 12px 16px; color: var(--dim); font-size: 12px;
+/* Not `.prog`: a scoped rule also reaches a child component's root, and
+   ScanProgress's root is `.prog` — this flex row squeezed its bar, counter
+   and footer onto one line and the bar out of sight. */
+.runprog { padding: 12px 16px; color: var(--dim); font-size: 12px;
   display: flex; align-items: center; gap: 8px; }
-.prog .bg { margin-left: auto; color: #f9e2af; }
+.runprog .bg { margin-left: auto; color: #f9e2af; }
 .spin { animation: sp 1s linear infinite; }
 @keyframes sp { to { transform: rotate(360deg); } }
 .bar { height: 4px; background: #26263a; margin: 0 16px 10px; border-radius: 2px; }

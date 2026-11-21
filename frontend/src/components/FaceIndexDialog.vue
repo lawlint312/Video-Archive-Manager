@@ -306,7 +306,13 @@ onBeforeUnmount(() => { clearInterval(timer); if (running.value) setBusy('') })
             </div>
           </div>
 
-          <div class="card pick">
+          <!-- While indexing, the picker is all disabled for what can be hours,
+               so it is not shown (the user's call, as in ConvertDialog); v-show
+               keeps what is ticked. The progress is in the bar below. -->
+          <div v-if="running" class="card dim runnote">
+            {{ t('索引進行中，結束後可重新選擇角色') }}
+          </div>
+          <div v-show="!running" class="card pick">
             <div class="cardhead">
               <span>{{ t('選擇角色') }}</span>
               <span class="spacer"></span>

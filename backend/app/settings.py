@@ -118,9 +118,15 @@ def save(patch: dict) -> dict:
 # ── path helpers ─────────────────────────────────────────────────────────────
 
 def _resolve_list(paths: List[str]) -> List[Path]:
+    # Resolving a NAS path waits for the share to answer — over a minute
+    # after a long idle (2026-11-18). rootprobe lets the loading screen say
+    # which folder is holding everything up.
+    from .core import rootprobe
     out = []
-    for p in paths:
-        if p and str(p).strip():
+    want = [p for p in paths if p and str(p).strip()]
+    with rootprobe.track("resolve", len(want)) as probe:
+        for p in want:
+            probe.at(p)
             try:
                 out.append(Path(p).resolve())
             except OSError:
@@ -147,6 +153,24 @@ def allowed_roots() -> List[Path]:
 # restriction". The stored list is always intersected with the roots that are
 # currently configured, so removing a root from Settings also removes it from
 # every user without a second edit.
+
+def _volume(p: str) -> str:
+    """`c:` or `\\\\host\\share`, lower-cased; '' for a relative path. Pure
+    string work — nothing here may touch a disk or the network."""
+    import ntpath
+    return ntpath.splitdrive(str(p).replace("/", "\\"))[0].lower()
+
+
+def unc_elsewhere(path, roots) -> bool:
+    """Is `path` a `\\\\host\\share` path on a share none of `roots` is on?
+    Such a path must be refused *before* anything resolves or opens it — see
+    `path_gate`. A drive letter cannot name an outside host (a mapped drive
+    is one the owner of the machine set up), so only UNC paths are caught."""
+    s = str(path).replace("/", "\\")
+    if not s.startswith("\\\\"):
+        return False
+    return _volume(s) not in {_volume(str(r)) for r in roots}
+
 
 def user_root_strings(user: Optional[dict]) -> Optional[List[str]]:
     """The raw list stored on the user, or None when unrestricted."""
@@ -203,8 +227,21 @@ def path_gate(user: Optional[dict] = None):
     445 rows of a saved convert scan took 8 s in `is_allowed` alone.
     """
     roots = roots_for(user)
+    # Drives and shares the roots live on, as typed and as resolved (a mapped
+    # drive resolves to its UNC share). Checked *before* `resolve()`, which
+    # on Windows opens an SMB connection to whatever host a `\\host\share`
+    # path names — so a path like `\\attacker\x` sent by any logged-in
+    # account made the server connect out and offer its NTLM credentials,
+    # even though the answer was then "not allowed". Same flaw as Starlette's
+    # GHSA-wqp7-x3pw-xc5r (found 2026-11-19).
+    s = get_cached()
+    vols = {_volume(str(r)) for r in roots}
+    vols |= {_volume(p) for p in list(s["archive_roots"]) + list(s["inbox_paths"]) if p}
+    vols.discard("")
 
     def allowed(path: Path) -> bool:
+        if _volume(str(path)) not in vols:
+            return False
         try:
             rp = path.resolve()
         except OSError:

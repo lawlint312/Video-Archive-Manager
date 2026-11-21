@@ -10,8 +10,13 @@
 import { t } from './i18n.js'
 import { ts } from './serverstrings.js'
 
-/** Percentage 0-100, or null when there is nothing honest to draw. */
+/** Percentage 0-100, or null when there is nothing honest to draw.
+ *
+ *  `frac`, when the server sends one, is the share of the *work* done — the
+ *  convert scan weighs files by size, because a 1.7 GB recording is not the
+ *  same job as a 90 MB one — and wins over the file count. */
 export function pct(p) {
+  if (p && p.frac != null) return Math.max(0, Math.min(100, Math.round(p.frac * 100)))
   if (!p || !p.total || p.total <= 0) return null
   return Math.max(0, Math.min(100, Math.round((p.done / p.total) * 100)))
 }
@@ -59,6 +64,9 @@ export function fmtProgressLine(p) {
   if (p.phases > 1) bits.push(t('階段 {phase}/{phases}', { phase: p.phase, phases: p.phases }))
   if (p.label) bits.push(ts(p.label))
   bits.push(fmtProgressCount(p))
+  // only where the server weighs the work itself; the duplicate scans' line
+  // stays as it was
+  if (p.frac != null) bits.push(`${pct(p)}%`)
   const eta = fmtEta(p.eta)
   if (eta) bits.push(eta)
   return bits.join(' · ')

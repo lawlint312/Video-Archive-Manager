@@ -984,6 +984,84 @@ def update_settings(body: SettingsBody, admin: dict = Depends(auth.require_admin
     return app_settings.save(patch)
 
 
+def _drive_letters() -> list:
+    """`C:\\`, `D:\\`… from the OS bitmask — no I/O, so a mapped network
+    drive that is offline cannot stall the list the way `exists()` would."""
+    if os.name != "nt":
+        return ["/"]
+    import ctypes
+    mask = ctypes.windll.kernel32.GetLogicalDrives()
+    return [f"{chr(65 + i)}:\\" for i in range(26) if mask >> i & 1]
+
+
+@app.get("/api/settings/folders")
+def browse_folders(path: str = "", admin: dict = Depends(auth.require_admin)):
+    """Subfolders of `path` on the server, for picking inbox and archive
+    folders instead of typing them. Admin only — the same people who can
+    already set any folder as a root. Empty `path` lists the drives; a NAS
+    share (`\\\\host\\share`) has to be typed once, since Windows cannot list
+    the shares of a host by walking it."""
+    path = path.strip()
+    if not path:
+        return {"path": "", "parent": None, "dirs": _drive_letters()}
+    p = os.path.normpath(path)
+    if p.endswith(":"):
+        p += os.sep                     # `D:` alone means D's current dir
+    try:
+        with os.scandir(p) as it:
+            dirs = [e.name for e in it
+                    if not e.name.startswith((".", "$", "#"))
+                    and e.is_dir(follow_symlinks=False)]
+    except OSError as e:
+        # the OS's own words (CLAUDE.md: never guess the cause)
+        raise HTTPException(status_code=400, detail=str(e))
+    dirs.sort(key=str.casefold)
+    parent = os.path.dirname(p.rstrip("\\/")) if not p.endswith(":\\") else ""
+    if parent and os.path.normcase(parent) == os.path.normcase(p.rstrip("\\/")):
+        parent = ""                     # `\\host\share` has no parent to list
+    if parent.startswith("\\\\") and parent.count("\\") < 3:
+        parent = ""                     # `\\host` alone cannot be listed
+    return {"path": p, "parent": parent, "dirs": dirs[:3000],
+            "more": max(0, len(dirs) - 3000)}
+
+
+class PathsBody(BaseModel):
+    paths: list
+
+
+@app.post("/api/settings/paths_check")
+def check_paths(body: PathsBody, admin: dict = Depends(auth.require_admin)):
+    """Is each folder reachable, and how many folders does it hold (for an
+    archive root: its characters)? Checked side by side with a time limit:
+    an unreachable NAS takes seconds to say so, and one must not hold up the
+    rest of the list."""
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutTimeout
+
+    def one(p: str) -> dict:
+        try:
+            with os.scandir(p) as it:
+                n = sum(1 for e in it if not e.name.startswith((".", "$", "#"))
+                        and e.is_dir(follow_symlinks=False))
+            return {"ok": True, "dirs": n}
+        except OSError as e:
+            return {"ok": False, "error": str(e)}
+
+    paths = [str(p).strip() for p in body.paths[:100] if str(p).strip()]
+    pool = ThreadPoolExecutor(max_workers=min(8, len(paths) or 1))
+    try:
+        futs = {p: pool.submit(one, p) for p in paths}
+        deadline = time.time() + 6
+        out = {}
+        for p, f in futs.items():
+            try:
+                out[p] = f.result(timeout=max(0.1, deadline - time.time()))
+            except FutTimeout:
+                out[p] = {"ok": False, "error": "timeout"}
+        return {"paths": out}
+    finally:
+        pool.shutdown(wait=False)
+
+
 @app.get("/api/users")
 def list_users(admin: dict = Depends(auth.require_admin)):
     users = auth.list_users()
@@ -1287,6 +1365,25 @@ def remove_user(uid: int, admin: dict = Depends(auth.require_admin)):
 def health():
     # unauthenticated: must not leak where the media lives
     return {"status": "ok"}
+
+
+@app.get("/api/roots/progress")
+async def roots_progress(request: Request):
+    """Which root folder the server is waiting on, for the loading screen.
+
+    `async` on purpose, and the session checked inline rather than through
+    `Depends`: a sync endpoint or dependency runs in the thread pool, and
+    when a NAS is slow to wake that pool is full of requests waiting on it —
+    the very moment this has to answer. It reads memory and one indexed row,
+    never a disk. The folder's path is shown to the admin only; anyone else
+    sees how far along it is (another account's roots are not theirs to
+    see)."""
+    from .core import rootprobe
+    user = auth.current_user(request)
+    snap = rootprobe.snapshot()
+    if snap and user.get("role") != "admin":
+        snap["current"] = None
+    return {"progress": snap}
 
 
 @app.get("/api/config")
@@ -2099,22 +2196,32 @@ class NfoBody(BaseModel):
 def _nfo_scope(names: list, user: dict) -> list:
     """[(video path, character name)] under these characters.
 
-    From the search index rather than a walk: it already holds every video
-    with its character, cached, and filtered to this account's roots.
+    Walks the chosen characters' folders. It used to read the search index,
+    which is up to ten minutes old and, once stale, still answers with the
+    old rows while it rebuilds: two videos moved into a `V` subfolder outside
+    VAM were looked for where they had been, their NFOs were not found, and
+    the import said there was nothing to bring in (2026-11-16). A few folders
+    are quick to walk, and the answer is what is on disk now.
     """
-    idx = searchindex.get(list(app_settings.archive_roots_for(user)),
-                          list(app_settings.inbox_paths_for(user)),
-                          scoped=bool(user.get("allowed_roots")))
     wanted = set(names or [])
-    return [(Path(idx["dirs"][r[2]]) / r[0], r[1]) for r in idx["v"]
-            if not r[3] and r[1] in wanted]
+    out = []
+    for c in media.list_characters(app_settings.archive_roots_for(user)):
+        if c["name"] not in wanted:
+            continue
+        for p in c.get("paths") or [c["path"]]:
+            out += [(path, c["name"])
+                    for path, _s, _m in media.scan_videos_with_stat(Path(p))]
+    return out
 
 
 class _NfoLibrary:
     """What one run needs to know about the library, worked out once."""
 
-    def __init__(self, user: dict):
-        self.chars = media.list_characters(app_settings.archive_roots_for(user))
+    def __init__(self, user: Optional[dict], roots: Optional[list] = None):
+        # `roots` instead of a user: the automatic read (`_auto_nfo`), which
+        # works on the whole library on nobody's behalf
+        self.chars = media.list_characters(
+            roots if roots is not None else app_settings.archive_roots_for(user))
         self.by_name = {c["name"]: c for c in self.chars}
         self.index = performers.index(self.chars)
         self.name_of = {costar.folder_key(p): c["name"]
@@ -2353,6 +2460,37 @@ def _nfo_export_apply(plan: dict, user: dict, progress=None) -> dict:
              created, updated, len(errors), batch.name)
     return {"created": created, "updated": updated, "errors": errors,
             "batch": batch.name}
+
+
+# NFOs read in by themselves (the user's call, 2026-11-16): the search index
+# notices a new, rewritten or moved one on its walk (`searchindex.on_nfo`)
+# and this fills in what VAM does not know yet — the same rules as the
+# import in 角色查詢, without its preview. It only writes VAM's own tables
+# (film titles, release dates, co-stars), never a file, and never replaces
+# a title typed by hand or brought in from a wiki, so there is nothing to
+# confirm; 片名查詢 applies what it finds the same way.
+_auto_nfo_lock = threading.Lock()
+
+
+def _auto_nfo(found: list, roots: list):
+    with _auto_nfo_lock:
+        lib = _NfoLibrary(None, roots=[r for r in roots])
+        plan = _nfo_import_plan(found, lib)
+        # A video still in the inbox has no character to tell its lead from
+        # a co-star by: the NFO of a download names the person herself, and
+        # she would be filed as her own co-star once it is archived.
+        for row in plan["rows"]:
+            if not row["char"]:
+                row["fills"] = [f for f in row["fills"] if f["field"] != "costar"]
+        plan["rows"] = [r for r in plan["rows"] if r["fills"]]
+        if not plan["rows"]:
+            return
+        done = _nfo_import_apply(plan)
+        log.info("nfo auto-import: %s from %d file(s), e.g. %s", done,
+                 len(plan["rows"]), plan["rows"][0]["nfo"])
+
+
+searchindex.on_nfo = _auto_nfo
 
 
 @app.post("/api/nfo/scan")
@@ -3721,8 +3859,11 @@ def convert_scan(body: ConvertScanBody, user: dict = Depends(auth.require_perm("
     jid = jobs.start(_task, kind=kind, label=label,
                      resume=_resumable("convert_scan", body, user))
     with _convert_scans_lock:
+        # roots too, so a reopened dialog can say what is being scanned:
+        # the folder picker is hidden while a scan runs (it cannot be used)
         _convert_scans[jid] = {"user": user.get("id"),
-                               "options": body.dict(exclude={"roots"})}
+                               "options": body.dict(exclude={"roots"}),
+                               "roots": [str(r) for r in body.roots]}
     return {"job_id": jid}
 
 
@@ -3750,7 +3891,8 @@ def convert_scan_active(user: dict = Depends(auth.require_perm("convert"))):
                 found = {"job_id": jid, "progress": j.get("progress", ""),
                          "started_at": j["started_at"],
                          "stopping": bool(j.get("cancel")),
-                         "options": meta["options"]}
+                         "options": meta["options"],
+                         "roots": meta.get("roots", [])}
     return {"scan": found}
 
 
@@ -4068,6 +4210,8 @@ def shrink_sample_play(request: Request, path: str = Query(...),
     the resolved path must sit inside the sample directory and nowhere else.
     """
     p = Path(path)
+    if app_settings.unc_elsewhere(p, [CACHE_DIR]):
+        raise HTTPException(status_code=403, detail="path not allowed")
     try:
         rp = p.resolve()
         root = (CACHE_DIR / "shrink_samples").resolve()
@@ -6423,6 +6567,8 @@ def _video_mime(p: Path) -> str:
 
 
 def _under(path: Path, root: Path) -> bool:
+    if app_settings.unc_elsewhere(path, [root]):
+        return False                    # resolving it would connect out
     try:
         path.resolve().relative_to(root)
         return True
@@ -6926,6 +7072,16 @@ class _AppFiles(StaticFiles):
     the content hash in their name, so they can be kept for good.
     """
     async def get_response(self, path, scope):
+        # Nothing in dist/ has a backslash, a colon or a drive in its name.
+        # Starlette (before 1.1.0) joins the request path onto the folder and
+        # calls `realpath` on it, and on Windows `/%5C%5Chost%5Cshare` turns
+        # into `\\host\share` — an SMB connection from this server to any host
+        # an *unauthenticated* request names, offering the account's NTLM
+        # credentials (GHSA-wqp7-x3pw-xc5r). Refused here whatever version is
+        # installed; found 2026-11-19.
+        raw = scope.get("path", "")
+        if "\\" in raw or ":" in raw or os.path.splitdrive(path)[0] or os.path.isabs(path):
+            raise HTTPException(status_code=404)
         resp = await super().get_response(path, scope)
         # Starlette normalises with os.path, so on Windows this is "assets\\…"
         if path.replace("\\", "/").startswith("assets/"):

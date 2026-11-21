@@ -405,12 +405,17 @@ def current_user(request: Request) -> dict:
     # A weak password found at sign-in (see security.weak_existing) leaves the
     # session usable for exactly the three calls needed to fix it. Enforced
     # here rather than in the UI: hiding the buttons stops nobody.
-    if user.get("must_change_pw") and request.url.path not in _PW_ALLOWED:
+    # the path the router dispatched on, not `request.url.path`: Starlette
+    # before 1.0.1 rebuilt `request.url` from the Host header, so a crafted
+    # one could make it name an allowed call while another ran
+    # (GHSA-86qp-5c8j-p5mr; found 2026-11-19)
+    path = request.scope.get("path", "")
+    if user.get("must_change_pw") and path not in _PW_ALLOWED:
         raise HTTPException(status_code=403,
                             detail="請先修改密碼：" + (user.get("pw_problem") or ""))
     # Same shape as the weak-password gate: an admin or editor without
     # two-factor can reach the setup calls and nothing else.
-    if needs_2fa_setup(user) and request.url.path not in _2FA_ALLOWED:
+    if needs_2fa_setup(user) and path not in _2FA_ALLOWED:
         raise HTTPException(status_code=403, detail="請先設定兩步驟驗證")
     return user
 

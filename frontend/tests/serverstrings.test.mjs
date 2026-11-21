@@ -60,10 +60,9 @@ check('… including a finding that is itself fixed text',
       ts('影格時序錯誤（有 B 影格卻沒有顯示時間表，瀏覽器會掉格）；需要安裝 GPAC 才能修復'),
       en['影格時序錯誤（有 B 影格卻沒有顯示時間表，瀏覽器會掉格）'] + en['；'] + en['需要安裝 GPAC 才能修復'])
 check('a ； inside text nobody listed is left alone', ts('甲；乙'), '甲；乙')
-check('a progress line with the check name translated',
-      ts('檢查格式：a.mkv（3/10，另 5 支沿用上次結果）'),
-      t('{check}：{name}（{k}/{total}，另 {n} 支沿用上次結果）',
-        { check: en['檢查格式'], name: 'a.mkv', k: '3', total: '10', n: '5' }))
+check('the reused count beside a check',
+      ts('另 5 支沿用上次結果'), t('另 {n} 支沿用上次結果', { n: '5' }))
+check('… and the check name itself', ts('檢查錄影中斷'), en['檢查錄影中斷'])
 check('a verify problem inside the failure',
       ts('驗證失敗，已保留原檔：輸出檔沒有視訊軌'),
       t('驗證失敗，已保留原檔：{problem}', { problem: en['輸出檔沒有視訊軌'] }))

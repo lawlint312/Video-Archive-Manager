@@ -55,10 +55,6 @@ ASSEMBLED = {
     "轉檔掃描（{list}）": ['"轉檔掃描"', '"（%s）"'],
     "請先修改密碼：{reason}": ['"請先修改密碼："'],
     "密碼還缺少：{list}": ['"密碼還缺少："'],
-    # convert._run_checks / the decode pass: f"{label}：{path.name}（{k}/{len(todo)}{tail}）"
-    "{check}：{name}（{k}/{total}）": ['：{path.name}（{k}/{len(todo)}{tail}）'],
-    "{check}：{name}（{k}/{total}，另 {n} 支沿用上次結果）":
-        ['：{path.name}（{k}/{len(todo)}{tail}）', '"，另 {reused} 支沿用上次結果"'],
     # repair.py: label = "找出壞掉的片段" + "（第 %d 輪）" % n
     "找出壞掉的片段（第 {n} 輪）": ['"找出壞掉的片段"', '"（第 %d 輪）"'],
 }

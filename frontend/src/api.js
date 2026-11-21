@@ -34,6 +34,15 @@ export function errText(e) {
   return ts(e.detail) || e.message || (e.status ? `HTTP ${e.status}` : t('未知的錯誤'))
 }
 
+// The session ended under an open page (it lasts SESSION_DAYS from sign-in,
+// and the browser drops the cookie at that moment): App.vue sets this to go
+// back to the sign-in screen. Without it every button kept failing with a
+// bare "not authenticated" alert (2026-11-21, a 設定分類 four seconds after
+// the expiry). Only these two answers count — a wrong password is a 401 too,
+// and that one belongs to the sign-in form.
+export const SESSION_GONE = ['not authenticated', 'session invalid or expired']
+export const onSessionGone = { fn: null }
+
 // Thin fetch wrapper. Always sends the session cookie (same-origin via Vite proxy).
 export async function api(path, opts = {}) {
   let r
@@ -60,6 +69,11 @@ export async function api(path, opts = {}) {
   if (!r.ok) {
     let detail = ''
     try { detail = (await r.json()).detail } catch { /* not JSON */ }
+    if (r.status === 401 && SESSION_GONE.includes(detail)) {
+      // the button that hit it still reports, in words that say what to do
+      detail = t('登入已過期，請重新登入')
+      if (onSessionGone.fn) onSessionGone.fn()
+    }
     // Never hand back an empty detail: some errors (a proxy failure, a 502)
     // have no JSON body at all, and `detail || status` would then show a bare
     // number with no clue what it was about.

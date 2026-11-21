@@ -12,15 +12,18 @@ cannot map a timestamp to a byte offset and has to stream from the beginning.
 from __future__ import annotations
 
 import json
+import os
 import logging
 import re
 import subprocess
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import checkcache, decodecheck, repair, retime
+from . import checkcache, decodecheck, mp4index, repair, retime
+from .progress import Reporter
 from .media import SUBPROCESS_FLAGS, VIDEO_EXT, ffmpeg_error
 
 log = logging.getLogger("vam.convert")
@@ -473,9 +476,11 @@ def scan(roots, progress: Optional[Callable[[str], None]] = None,
             files.append(path)
 
     store = checkcache.Store(check_cache) if check_cache else None
+    rp = ScanProgress(progress, phases=1 + check_timing + check_blanks
+                      + check_decode) if progress else None
     run = lambda paths, fn, kind, label, **kw: _run_checks(
         paths, fn, kind, label, store=store, recheck=recheck,
-        progress=progress, stats=stats, **kw)
+        progress=rp, stats=stats, **kw)
     try:
         # an unreadable file may be a passing NAS hiccup, and a repair is
         # cheap to find again: neither is remembered
@@ -491,12 +496,12 @@ def scan(roots, progress: Optional[Callable[[str], None]] = None,
                                         "檢查影格時序")))
         out = [_row(path, p, timing.get(path)) for path, p in zip(files, plans)]
         if check_blanks:
-            _blank_pass(every, out, progress, run)
+            _blank_pass(every, out, rp, run)
         if check_decode:
-            _decode_pass(every, out, progress, decode_cache, decode_gpu,
+            _decode_pass(every, out, rp, decode_cache, decode_gpu,
                          recheck=recheck, stats=stats,
                          gaps=lambda paths: run(paths, _gap_check, "gaps",
-                                                "檢查錄影斷訊",
+                                                "檢查錄影斷訊", sub=True,
                                                 keep=lambda v: v is not _UNREAD))
     finally:
         if store:
@@ -512,9 +517,87 @@ def _stat(path: Path):
         return None
 
 
+class ScanProgress(Reporter):
+    """The convert scan's progress: one phase per check, with a bar.
+
+    It used to be one line per finished file -- 「檢查格式：x.mp4（1/1，另 26
+    支沿用上次結果）」 -- and a new check said nothing until its first file was
+    done. Over the NAS that first file took minutes, and the line left on
+    screen named the *previous* check: it read as stuck (2026-11-16).
+
+    The bar is weighted by file size, not by count: a 390 MB and a 1.7 GB
+    recording are not the same amount of work, and the remaining-time
+    estimate (the shared Reporter's rolling rate) is over bytes for the same
+    reason. The counter still says files, which is what a person counts.
+    """
+
+    def __init__(self, cb, phases: int = 1):
+        super().__init__(cb, phases)
+        self.files_done = 0
+        self.files_total = 0
+        # Bytes of the files that are finished, and how far into each file
+        # in hand. Counting a file only when it finished made the bar sit
+        # still for minutes on a 2 GB recording and then jump by all of it
+        # (2026-11-16); the reads that take that long say how far they are.
+        self._whole = 0
+        self._part: dict = {}
+        self._plock = threading.Lock()
+
+    def begin(self, label: str, sizes: list, reused: int = 0,
+              sub: bool = False):
+        """Start a check over files of these sizes. `sub` keeps the phase
+        number: a step that belongs to the check before it (the dropout
+        test after the decode check)."""
+        self.files_done, self.files_total = 0, len(sizes)
+        with self._plock:
+            self._whole, self._part = 0, {}
+        self.phase(self.index if sub and self.index else self.index + 1,
+                   label, total=sum(sizes),
+                   hint=f"另 {reused} 支沿用上次結果" if reused else "")
+
+    def started(self, name: str):
+        self.note(name)
+
+    def file_part(self, key, size: int, frac: float):
+        """`frac` (0..1) of the file `key` of `size` bytes is done. Never
+        moves back: a GPU decode the card refuses is redone on the CPU from
+        the start, and a bar that slides back reads as lost work."""
+        frac = min(max(frac, 0.0), 1.0)
+        with self._plock:
+            got = max(self._part.get(key, 0), int(size * frac))
+            self._part[key] = got
+            self.done = self._whole + sum(self._part.values())
+        self.emit()
+
+    def file_done(self, size: int, key=None):
+        self.files_done += 1
+        with self._plock:
+            self._part.pop(key, None)
+            self._whole += size
+            self.done = self._whole + sum(self._part.values())
+        self.emit()
+
+    def snapshot(self) -> dict:
+        d = super().snapshot()          # eta from the byte rate
+        d.update(done=self.files_done, total=self.files_total,
+                 frac=(self.done / self.total) if self.total else None)
+        return d
+
+
+def _tracker(progress) -> Optional[ScanProgress]:
+    if progress is None or isinstance(progress, ScanProgress):
+        return progress
+    return ScanProgress(progress)
+
+
+def _size(st) -> int:
+    # an unreadable size still counts as something, or the bar would not move
+    return max(st[0], 1) if st else 1
+
+
 def _run_checks(paths, fn, kind: str, label: str, *, store=None,
                 recheck: bool = False, progress=None, stats=None,
-                keep=None, stoppable: bool = False,
+                keep=None, stoppable: bool = False, sub: bool = False,
                 workers: int = PROBE_WORKERS) -> list:
     """`fn(path)` for every path, in order, reusing remembered answers.
 
@@ -522,7 +605,8 @@ def _run_checks(paths, fn, kind: str, label: str, *, store=None,
     runs, so one that changes while being checked is checked again next time.
     `keep(answer)` says whether an answer may be remembered. With `stoppable`
     the stop button skips the files not started yet; their slots hold
-    `checkcache.MISS`.
+    `checkcache.MISS` -- and a file in hand whose check reads packets
+    (`_packets`) is abandoned too, its answer `_UNREAD` (never remembered).
     """
     version = CHECK_VERSIONS[kind]
     out = [checkcache.MISS] * len(paths)
@@ -536,24 +620,35 @@ def _run_checks(paths, fn, kind: str, label: str, *, store=None,
                 continue
         todo.append((i, path, st))
     reused = len(paths) - len(todo)
+    rp = _tracker(progress)
     stop = lambda: stoppable and bool(getattr(progress, "cancelled", False))
     done = [0]
     lock = threading.Lock()
-    tail = f"，另 {reused} 支沿用上次結果" if reused else ""
+    if rp:
+        rp.begin(label, [_size(st) for _i, _p, st in todo], reused, sub=sub)
 
     def one(item):
         i, path, st = item
         if stop():
             return
-        v = fn(path)
+        if rp:
+            rp.started(path.name)
+        _ctx.stop = stop
+        # how far into this file, from a check that reads all of it (_packets)
+        _ctx.part = ((lambda f, k=path, s=_size(st): rp.file_part(k, s, f))
+                     if rp else None)
+        try:
+            v = fn(path)
+        finally:
+            _ctx.stop = None
+            _ctx.part = None
         if store and st and (keep is None or keep(v)):
             store.put(kind, version, path, *st, v)
         out[i] = v
         with lock:
             done[0] += 1
-            k = done[0]
-        if progress:
-            progress(f"{label}：{path.name}（{k}/{len(todo)}{tail}）")
+            if rp:
+                rp.file_done(_size(st), path)
 
     if todo:
         with ThreadPoolExecutor(max_workers=workers) as ex:
@@ -579,6 +674,7 @@ def _decode_pass(every, out: list, progress, cache_path: Optional[Path],
     """
     by_path = {r["path"]: i for i, r in enumerate(out)}
     cache = decodecheck.Cache(cache_path) if cache_path else None
+    rp = _tracker(progress)
     stop = lambda: bool(getattr(progress, "cancelled", False))
     done = [0]
     lock = threading.Lock()
@@ -592,24 +688,33 @@ def _decode_pass(every, out: list, progress, cache_path: Optional[Path],
             results.append((path, hit))
         else:
             todo.append(path)
-    tail = f"，另 {len(results)} 支沿用上次結果" if results else ""
+    sizes = {p: _size(_stat(p)) for p in todo}
+    if rp:
+        rp.begin("完整解碼檢查", list(sizes.values()), len(results))
 
     def one(path: Path):
         if stop():
             return path, None
+        if rp:
+            rp.started(path.name)
+        # how far ffmpeg is into the file, so the bar moves during a long one
+        dur = durations.get(path, 0)
+        on_time = ((lambda t: rp.file_part(path, sizes[path], t / dur))
+                   if rp and dur > 0 else None)
         # stop is also asked *during* the file: one can take many minutes
-        n = decodecheck.check(path, cache, gpu, force=recheck, stop=stop)
+        n = decodecheck.check(path, cache, gpu, force=recheck, stop=stop,
+                              on_time=on_time)
         with lock:
             done[0] += 1
-            k = done[0]
-        if progress:
-            progress(f"完整解碼檢查：{path.name}（{k}/{len(todo)}{tail}）")
+            if rp:
+                rp.file_done(sizes[path], path)
         return path, n
 
     # The lengths decide how many at once (see DECODE_WORKERS); a length that
     # cannot be read counts as long — one at a time is never the wrong call.
     with ThreadPoolExecutor(max_workers=PROBE_WORKERS) as ex:
         lengths = list(ex.map(_duration, todo))
+    durations = dict(zip(todo, lengths))
     short = [p for p, d in zip(todo, lengths) if 0 < d < LONG_DECODE_SECONDS]
     long_ = [p for p, d in zip(todo, lengths) if not 0 < d < LONG_DECODE_SECONDS]
     try:
@@ -758,27 +863,127 @@ def _gap_check(path: Path):
     return {"gaps": len(gaps), "drop": gaps}
 
 
-def _packets(path: Path, stream: str) -> list:
-    """[(time, is_keyframe)] for one stream in file order; [] if unreadable.
-    The time is the DTS where there is one, else the PTS."""
+# The stop button of the check running on this thread (`_run_checks` sets it
+# around each file of a stoppable check), so `_packets` can end its ffprobe
+# instead of finishing a file that takes minutes over the NAS. `_ctx.part`
+# beside it takes how far into the file (0..1) for the progress bar.
+_ctx = threading.local()
+PACKETS_TIMEOUT = 600
+
+
+def _stopping() -> bool:
+    stop = getattr(_ctx, "stop", None)
+    return bool(stop and stop())
+
+
+# At most this many whole-file packet reads at once, on any disk. Eight in
+# flight (the check's worker count) saturated the NAS on 2026-11-16: an
+# MPEG-TS has no index to read instead, most of a webcam folder turned out to
+# be TS named .mp4, and with eight ffprobes streaming whole files every other
+# request that touched the NAS stalled — /api/config took 65 s, the page sat
+# at 「載入中…」. A spinning disk serving eight streams also seeks between them
+# and gets slower overall, not faster. First limited to network drives only;
+# the user wanted local disks held to the same two (2026-11-16) — most local
+# disks here are spinning ones too, and an MP4 skips this read entirely.
+FULL_READS = 2
+_full_reads = threading.BoundedSemaphore(FULL_READS)
+
+
+def _packets(path: Path, stream: str,
+             on_time: Optional[Callable[[float], None]] = None
+             ) -> Optional[list]:
+    """[(time, is_keyframe)] for one stream in file order ([] when it has no
+    packets), or None when ffprobe did not finish: it failed, timed out or the
+    scan was stopped. The time is the DTS where there is one, else the PTS.
+
+    None and [] must not be confused. A run cut short has printed part of
+    the file, and an audio pass that ends early looks exactly like a file
+    with no sound — which makes every frozen stretch look like a blank to cut.
+
+    Polled every half second rather than one blocking call, so the stop
+    button ends it: one file over the NAS took minutes, and 「停止中…」 used to
+    wait for every file in hand (2026-11-16).
+
+    Each run waits for one of `FULL_READS` slots first (still answering the
+    stop button while it waits). `on_time(seconds)` hears the time of the
+    packet being read every quarter second, for the progress bar."""
+    if _stopping():
+        return None
+    while not _full_reads.acquire(timeout=0.5):
+        if _stopping():
+            return None
     try:
-        r = subprocess.run(
+        return _packets_run(path, stream, on_time)
+    finally:
+        _full_reads.release()
+
+
+def _packet_time(line: str) -> Optional[float]:
+    parts = line.split(",")
+    t = None
+    for v in parts[:2]:             # pts_time, then dts_time wins
+        try:
+            t = float(v)
+        except ValueError:
+            pass
+    return t
+
+
+def _packets_run(path: Path, stream: str,
+                 on_time: Optional[Callable[[float], None]] = None
+                 ) -> Optional[list]:
+    try:
+        proc = subprocess.Popen(
             ["ffprobe", "-v", "error", "-select_streams", stream,
              "-show_entries", "packet=pts_time,dts_time,flags",
-             "-of", "csv=p=0", str(path)], capture_output=True, text=True,
-            timeout=600, creationflags=SUBPROCESS_FLAGS)
-    except Exception:
-        return []
+             "-of", "csv=p=0", str(path)], stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            creationflags=SUBPROCESS_FLAGS)
+    except OSError:
+        return None
+    # Read as it comes rather than all at the end, so `on_time` can say how
+    # far into the file the read is (the bar used to move only when a file
+    # was finished). stderr on its own thread: a pipe nobody drains stalls
+    # ffprobe once a few KB of complaints pile up.
+    lines: list = []
+
+    def drain_out():
+        last = 0.0
+        for line in proc.stdout:
+            lines.append(line)
+            if on_time:
+                now = time.monotonic()
+                if now - last >= 0.25:
+                    t = _packet_time(line)
+                    if t is not None:
+                        last = now
+                        on_time(t)
+
+    readers = [threading.Thread(target=drain_out, daemon=True),
+               threading.Thread(target=proc.stderr.read, daemon=True)]
+    for th in readers:
+        th.start()
+    t0 = time.monotonic()
+    while True:
+        try:
+            proc.wait(timeout=0.5)
+            break
+        except subprocess.TimeoutExpired:
+            if _stopping() or time.monotonic() - t0 > PACKETS_TIMEOUT:
+                proc.kill()
+                proc.wait()
+                for th in readers:
+                    th.join()
+                return None
+    for th in readers:
+        th.join()
+    if proc.returncode != 0 and not "".join(lines).strip():
+        return None             # could not open it at all (gone, NAS away)
     out = []
-    for line in r.stdout.splitlines():
-        parts = line.split(",")
-        t = None
-        for v in parts[:2]:             # pts_time, then dts_time wins
-            try:
-                t = float(v)
-            except ValueError:
-                pass
+    for line in lines:
+        t = _packet_time(line.rstrip("\n"))
         if t is not None:
+            parts = line.rstrip("\n").split(",")
             # the flags column by position: MPEG-TS adds a trailing empty
             # side-data column, so `parts[-1]` would read that and never K
             out.append((t, len(parts) > 2 and "K" in parts[2]))
@@ -786,7 +991,9 @@ def _packets(path: Path, stream: str) -> list:
 
 
 def _video_packets(path: Path) -> int:
-    return len(_packets(path, "v:0"))
+    """The video packet count; 0 when it cannot be read, which no plan
+    expects, so a verify that asks this fails rather than passes."""
+    return len(_packets(path, "v:0") or [])
 
 
 def blank_plan(path: Path) -> Optional[dict]:
@@ -802,7 +1009,9 @@ def blank_plan(path: Path) -> Optional[dict]:
     with no audio packet inside it either (sound over a frozen camera is
     content, not a blank), resuming on a keyframe so it can come out without
     re-encoding. Ones that fail either test are counted in `skipped` and left
-    alone. Reads only the packet index: about 0.5 s a file on a local disk.
+    alone. Reads only the packet index: about 0.5 s a file on a local disk;
+    an MP4 whose index shows no gap at all is passed from its `moov` alone
+    (`mp4index`), which is what keeps this cheap on the NAS.
     """
     plan = _blank_check(path)
     return None if plan is _UNREAD else plan
@@ -811,10 +1020,25 @@ def blank_plan(path: Path) -> Optional[dict]:
 def _blank_check(path: Path):
     """`blank_plan`, except an unreadable file is `_UNREAD` (see `_gap_check`)."""
     import bisect
-    v = sorted(_packets(path, "v:0"))
+    # The screen: no step of BLANK_SECONDS between two video samples in the
+    # MP4 index means no blank, without reading the file (see mp4index for
+    # why it is only ever trusted in that direction).
+    times = mp4index.video_times(path)
+    if times is not None and len(times) >= 2 and             mp4index.longest_gap(times) < BLANK_SECONDS:
+        return None
+    # How far the video read is, for the bar: it is nearly all of this
+    # check's time (the audio pass after it is quick). Only asked when a
+    # bar is listening; the length is a header read.
+    part = getattr(_ctx, "part", None)
+    dur = _duration(path) if part else 0.0
+    on_time = (lambda t: part(t / dur)) if part and dur > 0 else None
+    v = sorted(_packets(path, "v:0", on_time) or [])
     if len(v) < 2:
         return _UNREAD
-    a = sorted(t for t, _k in _packets(path, "a:0"))
+    a = _packets(path, "a:0")
+    if a is None:
+        return _UNREAD                  # not "no sound": see `_packets`
+    a = sorted(t for t, _k in a)
     deltas = sorted(y[0] - x[0] for x, y in zip(v, v[1:]) if y[0] > x[0])
     if not deltas:
         return None

@@ -22,6 +22,8 @@ const props = defineProps({
   stopping: { type: Boolean, default: false },
   // shown while the server has not sent its first update yet
   starting: { type: String, default: '' },     // empty: 啟動中…
+  // the convert scan's format check cannot be stopped part-way
+  canStop: { type: Boolean, default: true },
 })
 defineEmits(['stop'])
 
@@ -37,6 +39,9 @@ const p = () => (props.progress && typeof props.progress === 'object'
         <span v-if="p().phases > 1" class="ph">{{ t('階段 {phase}/{phases}', { phase: p().phase, phases: p().phases }) }}</span>
         <b>{{ ts(p().label) }}</b>
         <span class="cnt">{{ fmtProgressCount(p()) }}</span>
+        <!-- only where the server weighs the work itself (the convert scan,
+             by file size); the duplicate scans' bar already is the count -->
+        <span v-if="p().frac != null" class="pct">{{ pct(p()) }}%</span>
         <span v-if="p().hint" class="hint">（{{ ts(p().hint) }}）</span>
         <span class="spacer"></span>
         <!-- Only appears once the estimate is worth showing; a placeholder
@@ -44,10 +49,10 @@ const p = () => (props.progress && typeof props.progress === 'object'
         <span v-if="fmtEta(p().eta)" class="eta">{{ fmtEta(p().eta) }}</span>
       </template>
       <template v-else>
-        <span>{{ typeof progress === 'string' && progress ? progress : starting || t('啟動中…') }}</span>
+        <span>{{ typeof progress === 'string' && progress ? ts(progress) : starting || t('啟動中…') }}</span>
         <span class="spacer"></span>
       </template>
-      <button class="stop" :disabled="stopping" @click="$emit('stop')">
+      <button v-if="canStop" class="stop" :disabled="stopping" @click="$emit('stop')">
         {{ stopping ? t('停止中…') : t('停止') }}
       </button>
     </div>
@@ -76,6 +81,7 @@ const p = () => (props.progress && typeof props.progress === 'object'
   padding: 1px 6px; font-size: 11px; }
 .cnt { font-variant-numeric: tabular-nums; color: var(--text); }
 .hint { font-size: 11px; }
+.pct { color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }
 .eta { color: #f9e2af; font-variant-numeric: tabular-nums; }
 .stop { background: var(--card); border: 1px solid #666; border-radius: 4px;
   color: var(--text); font-size: 11px; padding: 3px 12px; cursor: pointer; }

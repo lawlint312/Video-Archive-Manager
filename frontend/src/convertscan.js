@@ -9,6 +9,7 @@ import { patiently } from './jobfollow'
 import { store, setBusy } from './store'
 import { t } from './i18n'
 import { ts } from './serverstrings.js'
+import { fmtProgressLine } from './scanprogress.js'
 
 const POLL_MS = 600
 
@@ -31,7 +32,9 @@ async function loop(jobId) {
       const j = await patiently(() => api(`/api/convert/job/${jobId}`))
       if (!mine()) return
       s.progress = j.progress || ''
-      setBusy(j.progress ? t('轉檔掃描：') + ts(j.progress) : '')
+      // an object since the scan reports phases; a string from an older server
+      const line = typeof j.progress === 'string' ? ts(j.progress) : fmtProgressLine(j.progress)
+      setBusy(line ? t('轉檔掃描：') + line : '')
       if (j.status === 'running') continue
       if (j.status === 'error') throw { detail: j.error || t('執行失敗') }
       // anything else is finished — 'cancelled' included (see ConvertDialog)

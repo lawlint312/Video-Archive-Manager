@@ -26,6 +26,11 @@ MISS = object()          # no usable answer (None is an answer: "nothing found")
 # runs at about 10 ms a file on 8 threads, and a commit per file would be a
 # noticeable share of that.
 _BATCH = 50
+# ... or after this long, whichever comes first. A batch alone held answers
+# that cost minutes each: over the NAS 50 files is hours, and a restart in
+# between (the job resumes, the SQLite journal rolls back) threw away every
+# file checked since 19:33 on 2026-11-16. Now a restart loses seconds.
+COMMIT_SECONDS = 10.0
 
 
 class Store:
@@ -33,6 +38,7 @@ class Store:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
         self._pending = 0
+        self._committed = time.monotonic()
         self.conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self.conn.execute("""CREATE TABLE IF NOT EXISTS results (
             kind TEXT, path TEXT, size INTEGER, mtime REAL, version INTEGER,
@@ -59,9 +65,11 @@ class Store:
                 (kind, str(path), size, mtime, version, json.dumps(value),
                  time.time()))
             self._pending += 1
-            if self._pending >= _BATCH:
+            if (self._pending >= _BATCH
+                    or time.monotonic() - self._committed >= COMMIT_SECONDS):
                 self.conn.commit()
                 self._pending = 0
+                self._committed = time.monotonic()
 
     def close(self) -> None:
         with self._lock:

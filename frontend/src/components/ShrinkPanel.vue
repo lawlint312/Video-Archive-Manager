@@ -264,13 +264,20 @@ async function run() {
 
 <template>
   <div class="wrap">
-    <button v-if="!scopeOpen" class="scopebar" @click="scopeOpen = true">
+    <!-- While scanning the picker and its options are all disabled, so they
+         are not shown (the user's call, as in ConvertDialog): a line saying
+         what is being scanned, and the progress below. -->
+    <div v-if="scanning" class="scopebar static">
+      {{ t('範圍：已選 {n} 個資料夾', { n: selected.length }) }}
+      <span class="chg">{{ t('掃描結束後可重新選擇範圍') }}</span>
+    </div>
+    <button v-else-if="!scopeOpen" class="scopebar" @click="scopeOpen = true">
       <Icon name="chevronRight" :size="13" />
       {{ t('範圍：已選 {n} 個資料夾', { n: selected.length }) }}
       <span class="chg">{{ t('重新選擇') }}</span>
     </button>
 
-    <div v-show="scopeOpen" class="scopewrap">
+    <div v-show="scopeOpen && !scanning" class="scopewrap">
       <ScopePicker storage-key="vam.shrink.picked" :default-all="false"
                    :remember="false" :disabled="scanning || running"
                    @update:selected="v => selected = v" />
@@ -561,6 +568,8 @@ async function run() {
   cursor: pointer; text-align: left; }
 .calib { margin-left: 6px; font-size: 12px; }
 .scopebar .chg { color: var(--accent); margin-left: 8px; }
+.scopebar.static { cursor: default; }
+.scopebar.static .chg { color: var(--dim); }
 /* Children never shrink: .wrap is the scroller, so anything taller than the
    dialog scrolls instead. With the default flex-shrink the picker block got
    squeezed below its content and its text spilled over the crf row. */

@@ -386,7 +386,8 @@ class Stopped(Exception):
     """The scan was stopped while this file was being decoded."""
 
 
-def _run(path: Path, gpu: bool, stop: Optional[Callable[[], bool]] = None):
+def _run(path: Path, gpu: bool, stop: Optional[Callable[[], bool]] = None,
+         on_time: Optional[Callable[[float], None]] = None):
     cmd = ["ffmpeg", "-hide_banner", "-v", "error", *SKIP_CHANGED_AUDIO]
     if gpu:
         cmd += ["-hwaccel", "cuda", "-hwaccel_output_format", "cuda"]
@@ -412,23 +413,47 @@ def _run(path: Path, gpu: bool, stop: Optional[Callable[[], bool]] = None):
     p = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                          stderr=subprocess.PIPE, text=True, encoding="utf-8",
                          errors="replace", creationflags=SUBPROCESS_FLAGS)
+    # Drained line by line on a thread now rather than by communicate(), so
+    # the `out_time_us=` reports can tell `on_time` how far the decode is:
+    # the scan's bar used to move only when a file was finished, sitting at
+    # 21% for minutes on one recording and then jumping to 25% (2026-11-16).
+    # The text collected is the same, so the error counts are too.
+    lines: list = []
+
+    def drain():
+        last = 0.0
+        for line in p.stderr:
+            lines.append(line)
+            if on_time and line.startswith("out_time_us="):
+                now = time.monotonic()
+                if now - last >= 0.25:
+                    v = line[12:].strip()
+                    if v.isdigit():
+                        last = now
+                        on_time(int(v) / 1e6)
+
+    reader = threading.Thread(target=drain, daemon=True)
+    reader.start()
     t0 = time.monotonic()
     while True:
         try:
-            _out, err = p.communicate(timeout=0.5)
-            return subprocess.CompletedProcess(cmd, p.returncode, "", err)
+            p.wait(timeout=0.5)
+            reader.join()
+            return subprocess.CompletedProcess(cmd, p.returncode, "", "".join(lines))
         except subprocess.TimeoutExpired:
             stopped = bool(stop and stop())
             if stopped or time.monotonic() - t0 > TIMEOUT:
                 p.kill()
-                p.communicate()
+                p.wait()
+                reader.join()
                 if stopped:
                     raise Stopped(str(path))
                 raise subprocess.TimeoutExpired(cmd, TIMEOUT)
 
 
 def decode(path: Path, gpu: bool = False,
-           stop: Optional[Callable[[], bool]] = None) -> Optional[Counts]:
+           stop: Optional[Callable[[], bool]] = None,
+           on_time: Optional[Callable[[float], None]] = None) -> Optional[Counts]:
     """Decode the first video and audio streams end to end; the error-line
     counts (video, with `.audio` beside it), or None if ffmpeg could not be
     run to completion (timeout, missing file).
@@ -441,7 +466,7 @@ def decode(path: Path, gpu: bool = False,
     `Stopped` raised — never taken for a GPU refusal and redone on the CPU."""
     if gpu and gpu_ok(path):
         try:
-            r = _run(path, True, stop)
+            r = _run(path, True, stop, on_time)
             v, a = split_errors(r.stderr)
             # A non-zero exit alone is not a refusal: a badly damaged file
             # exits 69 on the CPU too (0K4KREIq4KD1kijH.mp4, both paths).
@@ -455,7 +480,7 @@ def decode(path: Path, gpu: bool = False,
         except (subprocess.TimeoutExpired, OSError):
             pass
     try:
-        err = _run(path, False, stop).stderr
+        err = _run(path, False, stop, on_time).stderr
         v, a = split_errors(err)
         return Counts(v, a, regions_of(err, duration=_length(path))
                       if v + a else [])
@@ -574,7 +599,8 @@ class Cache:
 
 def check(path: Path, cache: Optional[Cache], gpu: bool = False,
           force: bool = False,
-          stop: Optional[Callable[[], bool]] = None) -> Optional[Counts]:
+          stop: Optional[Callable[[], bool]] = None,
+          on_time: Optional[Callable[[float], None]] = None) -> Optional[Counts]:
     """Error counts for `path`, from the cache when the file is unchanged.
     `force` decodes anyway (the scan's "check everything again") and
     remembers the new answer. None when it could not be decoded — or the
@@ -588,7 +614,7 @@ def check(path: Path, cache: Optional[Cache], gpu: bool = False,
         if hit is not None:            # 0 is an answer, not a miss
             return hit
     try:
-        n = decode(path, gpu, stop)
+        n = decode(path, gpu, stop, on_time)
     except Stopped:
         return None
     if n is not None and (n or n.audio) and n.regions is None:

@@ -9,6 +9,7 @@ import { viewForChar, pickTab, viewOf, HOME_SHAPES, homeStyle, cardImage }
 import { avatarImgStyle } from '../avatar'
 import { sizeBatcher } from '../imgsizes.js'
 import Icon from './Icon.vue'
+import RootWait from './RootWait.vue'
 import { t } from '../i18n'
 
 const chars = ref([])
@@ -187,7 +188,7 @@ watch(() => store.charsVersion, load)
       </span>
     </div>
 
-    <div v-if="loading" class="msg">{{ t('載入中…') }}</div>
+    <div v-if="loading" class="msg">{{ t('載入中…') }}<RootWait /></div>
     <div v-else-if="store.tagFilter && !tagged.length" class="msg">
       {{ t('沒有角色標了「{tag}」', { tag: store.tagFilter }) }}
     </div>
