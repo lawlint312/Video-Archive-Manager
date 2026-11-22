@@ -13,6 +13,7 @@ only on username lets anyone freeze a real account), and locking out yourself
 
 Run:  python tests/test_security.py        (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import sys
 from pathlib import Path
 

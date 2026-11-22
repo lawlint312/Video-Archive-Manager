@@ -8,6 +8,7 @@ more than the "must match" one.
 Run:  python -m pytest tests/ -q        (from backend/)
       python tests/test_detect_video_id.py   (no pytest needed)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import sys
 from pathlib import Path
 

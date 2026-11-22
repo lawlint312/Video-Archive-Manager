@@ -14,6 +14,7 @@ Every fixture is generated with ffmpeg in a temp directory.
 
 Run:  python tests/test_hevc_playable.py      (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import json
 import shutil
 import subprocess

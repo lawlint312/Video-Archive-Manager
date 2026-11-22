@@ -12,6 +12,7 @@ header alone would offer to repair files with nothing wrong.
 
 Run:  python tests/test_repair.py        (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import struct
 import subprocess
 import sys

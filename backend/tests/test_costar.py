@@ -13,6 +13,7 @@ Everything runs on a throwaway database and a throwaway library.
 
 Run:  python tests/test_costar.py      (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import shutil
 import sys
 import tempfile

@@ -15,6 +15,7 @@ library's broken files (container intact, ffprobe happy, frames garbage).
 
 Run:  python tests/test_decodecheck.py        (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import json
 import shutil
 import sqlite3

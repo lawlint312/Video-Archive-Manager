@@ -11,6 +11,7 @@ would fail quietly:
 
     python tests/test_relationdup.py
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import shutil
 import sys
 import tempfile

@@ -8,6 +8,7 @@
 
 Run:  python tests/test_lang.py        (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import os
 import sqlite3
 import sys

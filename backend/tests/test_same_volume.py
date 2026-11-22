@@ -7,6 +7,7 @@ reverse skips the space check before a copy that can fill the disk.
 Run:  python -m pytest tests/ -q        (from backend/)
       python tests/test_same_volume.py
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import sys
 from pathlib import Path
 

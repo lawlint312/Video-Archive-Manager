@@ -47,6 +47,9 @@ DEFAULTS = {
     "backup_keep": 14,           # how many timestamped runs to keep
     "backup_last_at": "",        # last success (ISO); shown in settings
     "backup_last_error": "",     # last failure, cleared by a success
+    # Where a convert encodes before copying the result to the NAS (see
+    # core/localstage.py). Empty = beside the source, as before.
+    "convert_staging_dir": "",
     "sidebar_groups": {},        # { group_name: [character_name, ...] }
     "sidebar_group_order": [],   # display order of the groups
 }

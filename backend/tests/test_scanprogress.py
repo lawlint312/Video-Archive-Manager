@@ -12,6 +12,7 @@ counting, not detection — `test_imgdedup.py` and the real library cover that.
 
 Run:  python tests/test_scanprogress.py        (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import shutil
 import sys
 import tempfile

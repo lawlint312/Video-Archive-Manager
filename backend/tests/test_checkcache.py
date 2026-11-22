@@ -17,6 +17,7 @@ Everything on throwaway directories, real data/ untouched.
 
 Run:  python tests/test_checkcache.py      (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import os
 import shutil
 import subprocess

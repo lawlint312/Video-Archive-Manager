@@ -11,6 +11,7 @@ The assertions worth having:
 
 Run:  python tests/test_roles.py        (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import os
 import sys
 import tempfile

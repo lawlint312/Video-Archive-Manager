@@ -10,6 +10,7 @@ import ShrinkPanel from './ShrinkPanel.vue'
 import Icon from './Icon.vue'
 import { t, N_ } from '../i18n'
 import { ts } from '../serverstrings.js'
+import { fmtBackground } from '../jobfollow.js'
 import VideoPlayer from './VideoPlayer.vue'
 import DupHistory from './DupHistory.vue'
 import SideDialog from './SideDialog.vue'
@@ -191,6 +192,10 @@ const scanScope = computed(() => {
 const running = ref(false)
 const progress = ref('')
 const pct = ref(0)
+// the convert job, for 停止 (2026-11-21: a VC-1 file ffmpeg could not decode
+// sat at 0% for minutes and nothing could end it)
+const runJob = ref('')
+const runStopping = ref(false)
 const error = ref('')
 const items = ref(null)        // null = not scanned yet
 const result = ref(null)
@@ -351,6 +356,7 @@ async function run() {
         crf: crf.value, gpu: gpu.value,
       }),
     })
+    runJob.value = job_id
     const res = await poll(job_id, '/api/convert/job', p => {
       if (p && typeof p === 'object') {
         pct.value = Math.round((p.pct || 0) * 100)
@@ -358,15 +364,21 @@ async function run() {
         // thing that says what it is doing — without it the bar sat at 0%
         // for 83 seconds and then jumped to done.
         const stage = p.stage ? ` · ${ts(p.stage)}` : ''
-        progress.value = `(${p.index}/${p.total}) ${p.name}${stage} — ${pct.value}%`
+        // the relay: what is downloaded or copied back meanwhile
+        const bg = fmtBackground(p.bg)
+        progress.value = (p.name ? `(${p.index}/${p.total}) ${p.name}${stage} — ${pct.value}%`
+                                 : ts(p.stage || '')) +
+                         (bg ? ` ｜ ${bg}` : '')
         setBusy(t('轉檔中 {progress}', { progress: progress.value }))
       }
     })
     result.value = res
-    setStatus(t('轉檔完成：{n} 個成功', { n: res.converted.length }) +
+    setStatus((res.stopped ? t('轉檔已停止：{n} 個成功', { n: res.converted.length })
+                           : t('轉檔完成：{n} 個成功', { n: res.converted.length })) +
               (res.failed.length ? t('，{n} 個失敗', { n: res.failed.length }) : '') +
+              (res.stopped ? t('，{n} 個沒有轉', { n: res.left }) : '') +
               (res.saved > 0 ? t('，省下 {size}', { size: fmtSize(res.saved) }) : ''),
-              res.failed.length ? 'warn' : 'ok')
+              res.failed.length || res.stopped ? 'warn' : 'ok')
     // drop the finished rows so a second run does not offer them again
     const done = new Set(res.converted.map(c => c.src))
     items.value = items.value.filter(i => !done.has(i.path))
@@ -374,7 +386,19 @@ async function run() {
     emit('done')
   } catch (e) {
     error.value = t('轉檔失敗：') + errText(e)
-  } finally { running.value = false; setBusy('') }
+  } finally {
+    running.value = false; setBusy('')
+    runJob.value = ''; runStopping.value = false
+  }
+}
+
+// ffmpeg is ended within half a second; a repair or retime finishes the file
+// in hand first. Either way the source of the file cut short stays.
+async function stopRun() {
+  if (!runJob.value) return
+  runStopping.value = true
+  try { await api(`/api/jobs/${runJob.value}/cancel`, { method: 'POST' }) }
+  catch (e) { runStopping.value = false; error.value = t('無法停止：') + errText(e) }
 }
 
 // minutes:seconds, or h:mm:ss -- the blanks are minutes long
@@ -537,6 +561,8 @@ const DAMAGE = { 輕微: N_('輕微'), 中等: N_('中等'), 嚴重: N_('嚴重'
              background, reopening the dialog while it runs picks it back up,
              and once done it opens from 歷史紀錄. -->
         <span class="bg">{{ t('轉檔進行中，無法關閉此視窗') }}</span>
+        <button class="stop" :disabled="!runJob || runStopping" @click="stopRun">
+          {{ runStopping ? t('停止中…') : t('停止') }}</button>
       </div>
       <div v-if="running" class="bar"><div class="fill" :style="{ width: pct + '%' }"></div></div>
       <div v-if="error" class="err">{{ error }}</div>
@@ -547,6 +573,8 @@ const DAMAGE = { 輕微: N_('輕微'), 中等: N_('中等'), 嚴重: N_('嚴重'
           {{ t('完成 {n} 個', { n: result.converted.length }) }}
           <template v-if="result.saved > 0">· {{ t('省下 {size}', { size: fmtSize(result.saved) }) }}</template>
         </div>
+        <div v-if="result.stopped" class="partial">
+          {{ t('已停止：還有 {n} 個沒有轉；中斷的那個保留原檔，做到一半的檔案已刪除。', { n: result.left }) }}</div>
         <!-- how much a repair actually cost is only knowable afterwards, so
              it has to be reported here rather than promised up front -->
         <div v-for="c in (result.converted || []).filter(c => c.action === 'repair')"
@@ -871,6 +899,10 @@ const DAMAGE = { 輕微: N_('輕微'), 中等: N_('中等'), 嚴重: N_('嚴重'
 .runprog { padding: 12px 16px; color: var(--dim); font-size: 12px;
   display: flex; align-items: center; gap: 8px; }
 .runprog .bg { margin-left: auto; color: #f9e2af; }
+.runprog .stop { background: var(--card); border: 1px solid #666; border-radius: 4px;
+  color: var(--text); font-size: 11px; padding: 3px 12px; cursor: pointer; }
+.runprog .stop:hover:not(:disabled) { border-color: #f38ba8; color: #f38ba8; }
+.runprog .stop:disabled { opacity: .55; cursor: default; }
 .spin { animation: sp 1s linear infinite; }
 @keyframes sp { to { transform: rotate(360deg); } }
 .bar { height: 4px; background: #26263a; margin: 0 16px 10px; border-radius: 2px; }

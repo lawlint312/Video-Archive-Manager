@@ -13,6 +13,7 @@ Everything runs on throwaway databases.
 
 Run:  python tests/test_releasedate.py      (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import shutil
 import sqlite3
 import sys

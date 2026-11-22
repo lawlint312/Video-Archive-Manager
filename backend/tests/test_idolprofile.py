@@ -11,6 +11,7 @@ The expensive mistakes this guards against:
 
 Run:  python tests/test_idolprofile.py       (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import datetime
 import sys
 from pathlib import Path

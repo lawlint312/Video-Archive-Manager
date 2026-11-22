@@ -30,8 +30,8 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional
 
-from .media import (COLOUR_FIX, SUBPROCESS_FLAGS, drop_stale, file_stamp,
-                    probe_video_codec)
+from .media import (COLOUR_FIX, SUBPROCESS_FLAGS, demux_fix, drop_stale,
+                    file_stamp, probe_video_codec)
 
 log = logging.getLogger("vam")
 
@@ -217,18 +217,20 @@ def _grab_cmd(src: Path, t: float, dst: Path, tile_w: int, gpu: bool,
     `colour_fix` overrides "reserved" colour metadata that swscale refuses;
     see `media.COLOUR_FIX`. It is a retry, never the first attempt.
     """
+    # VC-1 out of a WMV: no start codes for the parser (media.demux_fix)
+    fix = demux_fix(video_codec(src))
     if gpu:
         vf = f"scale_cuda={tile_w}:-2:format=nv12,hwdownload,format=nv12"
         if colour_fix:
             vf = f"{vf},{COLOUR_FIX}"
         return ["ffmpeg", "-hwaccel", "cuda", "-hwaccel_output_format", "cuda",
-                "-ss", f"{max(0, t):.2f}", "-i", str(src),
+                *fix, "-ss", f"{max(0, t):.2f}", "-i", str(src),
                 "-frames:v", "1", "-q:v", "4", "-vf", vf,
                 str(dst), "-y", "-loglevel", "error"]
     vf = f"scale={tile_w}:-1"
     if colour_fix:
         vf = f"{COLOUR_FIX},{vf}"
-    return ["ffmpeg", "-ss", f"{max(0, t):.2f}", "-i", str(src),
+    return ["ffmpeg", *fix, "-ss", f"{max(0, t):.2f}", "-i", str(src),
             "-frames:v", "1", "-q:v", "4", "-vf", vf,
             str(dst), "-y", "-loglevel", "error"]
 

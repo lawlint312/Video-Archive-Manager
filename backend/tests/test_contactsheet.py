@@ -12,6 +12,7 @@ across the 64 ms save.
 
 Run:  python tests/test_contactsheet.py        (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import os
 import random
 import shutil

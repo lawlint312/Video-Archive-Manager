@@ -9,6 +9,8 @@ import json
 import shutil
 import logging
 import hashlib
+import threading
+import time
 import platform
 import subprocess
 import unicodedata
@@ -182,21 +184,108 @@ def probe_video_codec(path: Path) -> Tuple[float, int, int, str]:
 COLOUR_FIX = "setparams=color_primaries=bt709:color_trc=bt709"
 
 
-def make_thumbnail(src: Path, dst: Path, t: float, size: int = 640) -> bool:
+# VC-1 copied out of a WMV into MP4 (seen: `Lavf58` files tagged maxJAV.com,
+# 2026-11-21). The sequence header is where it belongs, in the `dvc1` box, but
+# the samples carry no start codes — each is a bare frame, as in ASF. ffmpeg's
+# VC-1 *parser* splits on start codes, finds none, and buffers until it fails
+# ("Failed to reallocate parser buffer to -2147479822") after reading the whole
+# file: a frame grab timed out, a re-encode read 5.4 GB for nine minutes and
+# wrote nothing. The *decoder* takes bare frames fine, so the fix is to skip
+# the parser: `noparse` (and `nofillin`, which the docs pair with it for
+# seeking). Measured: a frame grab 0.2–1.3 s, a 60 s re-encode in 5 s with
+# 1800 frames, audio and video both 60.000 s, a clean full decode.
+# Only for VC-1 — every other codec here needs its parser.
+def demux_fix(codec: str) -> list:
+    """Input options for a video of this codec (before `-i`); usually none."""
+    return ["-fflags", "+noparse+nofillin"] if codec == "vc1" else []
+
+
+# What the RTX 2070's NVDEC decodes *into a re-encode*, measured on real files
+# (2026-11-22, convert.md "轉檔用 GPU 解碼"): same frame count and SSIM 1.000
+# against a CPU decode (10-bit HEVC 0.995: the step down to 8-bit is done by
+# scale_cuda rather than swscale), CPU 20.1 → 1.9 s for 60 s of 1080p H.264.
+# A list of what works, not of what fails, because NVDEC does not fail fast:
+# AV1 sat at 0% for nine hours with `-hwaccel cuda`, RV40 wrote nothing.
+# MPEG-4 Part 2 decodes but differs from the CPU (SSIM 0.991) and saves
+# nothing (0.8 → 0.7 s), so it stays on the CPU; full-range (yuvj) and
+# 4:2:2 / 4:4:4 were not measured and stay there too.
+NVDEC_OK = {"h264": {"yuv420p"},
+            "hevc": {"yuv420p", "yuv420p10le"},
+            "vp9": {"yuv420p"},
+            "vc1": {"yuv420p"},
+            "wmv3": {"yuv420p"}}
+
+
+def nvdec_ok(codec: str, pix_fmt: str) -> bool:
+    """True when a video of this codec and pixel format may be decoded on
+    the GPU (see `NVDEC_OK`)."""
+    # VC-1 copied into MP4 (the AVOP-071 kind) reports no pixel format —
+    # ffprobe would have to decode a frame, and with the parser on it cannot.
+    # VC-1 and WMV3 have exactly one: 8-bit 4:2:0.
+    if not pix_fmt and codec in ("vc1", "wmv3"):
+        pix_fmt = "yuv420p"
+    return pix_fmt in NVDEC_OK.get(codec or "", ())
+
+
+_codec_memo: dict = {}          # (path, size, mtime) -> codec name
+
+
+def video_codec_of(path: Path) -> str:
+    """The first video stream's codec, one ffprobe per file version — for the
+    tools (clip) that call ffmpeg/ffprobe several times on the same file."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return ""
+    key = (str(path), st.st_size, int(st.st_mtime))
+    hit = _codec_memo.get(key)
+    if hit is None:
+        if len(_codec_memo) > 2000:
+            _codec_memo.clear()
+        hit = _codec_memo[key] = probe_video_codec(Path(path))[3]
+    return hit
+
+
+def demux_fix_for(path: Path) -> list:
+    """`demux_fix` for this file."""
+    return demux_fix(video_codec_of(path))
+
+
+def make_thumbnail(src: Path, dst: Path, t: float, size: int = 640,
+                   codec: str = "") -> bool:
     dst.parent.mkdir(parents=True, exist_ok=True)
     for vf in (f"scale={size}:-1", f"{COLOUR_FIX},scale={size}:-1"):
         try:
             subprocess.run(
-                ["ffmpeg", "-ss", str(max(0, t)), "-i", str(src),
+                ["ffmpeg", *demux_fix(codec), "-ss", str(max(0, t)), "-i", str(src),
                  "-vframes", "1", "-q:v", "3", "-vf", vf,
                  str(dst), "-y", "-loglevel", "error"],
-                timeout=30, capture_output=True, creationflags=SUBPROCESS_FLAGS)
+                timeout=THUMB_TIMEOUT, capture_output=True,
+                creationflags=SUBPROCESS_FLAGS)
             # size, not existence: a refused conversion still creates the file
             if dst.exists() and dst.stat().st_size > 0:
                 return True
+        except subprocess.TimeoutExpired:
+            # The colour retry is for swscale refusing at once (error -129);
+            # a timeout is a file ffmpeg cannot decode at all, and trying
+            # again only reads another 30 s of it off the disk.
+            return False
         except Exception:
             pass
     return False
+
+
+THUMB_TIMEOUT = 30
+# Videos whose frame grab just failed: {(path, stamp): when}. A file ffmpeg
+# cannot decode does not fail fast — AVOP-071.mp4 (VC-1 in MP4, 5.4 GB, no
+# usable codec parameters) reads the file until the timeout, twice. Every
+# visit to its folder did that again, pulling gigabytes off the NAS while the
+# character page and the home page waited behind it: /api/characters took 29 s
+# instead of 1.5 (2026-11-21). Remembered by stamp, so a replaced or repaired
+# file is tried at once; in memory only and for THUMB_RETRY_AFTER, because a
+# NAS that stalled for half a minute looks the same as a broken file.
+THUMB_RETRY_AFTER = 1800.0
+_thumb_failed: dict = {}
 
 
 THUMB_DIR = "thumbs"
@@ -339,13 +428,21 @@ def get_or_make_thumb(video: Path, cache: Path,
     dst = thumb_cache_path(video, pct, cache, size, stamp)
     if dst.exists():
         return dst                      # cache hit → no ffmpeg, no queueing
+    key = (str(video), stamp)
+    failed = _thumb_failed.get(key)
+    if failed and time.time() - failed < THUMB_RETRY_AFTER:
+        return None                     # failed just now; see _thumb_failed
     with _THUMB_SLOTS:
         if dst.exists():                # another request may have just made it
             return dst
-        dur, _, _ = probe_video(video)
+        if key in _thumb_failed and time.time() - _thumb_failed[key] < THUMB_RETRY_AFTER:
+            return None                 # failed while this one queued
+        dur, _, _, codec = probe_video_codec(video)
         t = dur * pct if dur > 0 else 3.0
-        make_thumbnail(video, dst, t, size)
+        if not make_thumbnail(video, dst, t, size, codec):
+            _thumb_failed[key] = time.time()
     if dst.exists():
+        _thumb_failed.pop(key, None)
         drop_stale(dst.parent, stamp)
         return dst
     return None
@@ -509,6 +606,7 @@ def list_characters(roots: List[Path]) -> List[dict]:
     the drive letters, e.g. "Urabukkake (F:+G:+K:)").
     """
     from . import rootprobe
+    gen = _names_gen
     by_name: dict = {}
     with rootprobe.track("list", len(roots)) as probe:
         for root in roots:
@@ -552,7 +650,76 @@ def list_characters(roots: List[Path]) -> List[dict]:
                           "paths": paths, "drives": label,
                           "same_volume": one_volume})
     chars.sort(key=lambda c: c["name"].lower())
+    _remember_names(roots, chars, gen)
     return chars
+
+
+# ── the character list, answered from the last walk ─────────────────────────
+#
+# For the folder pickers (`/api/scope`). Opening 轉檔為 MP4 showed an empty
+# list for 6–13 s (2026-11-21): the walk itself is ~50 ms for all 33 roots,
+# but it queued on the NAS behind the search-index and count rebuilds and a
+# video being played. A picker can show the folders as of a minute ago and
+# catch up behind the scenes; a folder made in Explorer shows on the next
+# open. Every `list_characters` call refreshes it (the home page makes one on
+# every load), and VAM's own changes clear it through `forget_names()`
+# (main._files_changed).
+NAMES_FRESH = 30.0
+_names_lock = threading.Lock()
+_names: dict = {}           # tuple of root strings -> (when, [(name, paths)])
+_names_busy: set = set()
+_names_gen = 0              # bumped by forget_names: a walk begun before it
+                            # must not put its answer back
+
+
+def _remember_names(roots, chars, gen):
+    key = tuple(str(r) for r in roots)
+    with _names_lock:
+        if gen == _names_gen:
+            _names[key] = (time.time(),
+                           [(c["name"], list(c["paths"])) for c in chars])
+
+
+def character_paths(roots: List[Path]) -> List[Tuple[str, List[str]]]:
+    """`[(name, paths)]` like `list_characters`, without waiting for a walk
+    once one has been done for these roots; an answer older than NAMES_FRESH
+    starts a fresh walk in the background for the next caller."""
+    key = tuple(str(r) for r in roots)
+    with _names_lock:
+        hit = _names.get(key)
+    if hit is None:
+        return [(c["name"], list(c["paths"])) for c in list_characters(roots)]
+    at, names = hit
+    if time.time() - at > NAMES_FRESH:
+        with _names_lock:
+            go = key not in _names_busy
+            _names_busy.add(key)
+        if go:
+            def walk():
+                try:
+                    list_characters(list(roots))
+                except Exception:
+                    log.exception("character list refresh failed")
+                finally:
+                    with _names_lock:
+                        _names_busy.discard(key)
+            threading.Thread(target=walk, daemon=True).start()
+    return names
+
+
+def forget_names():
+    global _names_gen
+    with _names_lock:
+        _names_gen += 1
+        _names.clear()
+
+
+# Taken by the background rebuilds that walk every character folder
+# (charstats, searchindex). Both go stale on the same ten-minute clock, so
+# opening VAM after a break started two full walks of the NAS at once, on top
+# of whatever the page itself was asking for (2026-11-21). One at a time, the
+# second one also finds the directory listings warm.
+LIBRARY_WALK = threading.Lock()
 
 
 def count_videos(folder: Path) -> int:

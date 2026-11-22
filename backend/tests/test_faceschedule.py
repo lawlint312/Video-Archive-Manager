@@ -14,6 +14,7 @@ No video is read: embeddings are faked, the databases are temp files.
 
 Run:  python tests/test_faceschedule.py      (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import shutil
 import sys
 import tempfile

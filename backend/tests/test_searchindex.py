@@ -11,6 +11,7 @@ shared index is filtered to the account's roots:
 
 Run:  python tests/test_searchindex.py      (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import shutil
 import sys
 import tempfile

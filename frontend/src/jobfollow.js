@@ -45,6 +45,16 @@ export async function patiently(fn, { windowMs = RESTART_WINDOW_MS, waitMs = RET
   }
 }
 
+/** The background half of a convert relay: the source being downloaded and
+ *  the finished file being copied back while the GPU encodes the next one. */
+export function fmtBackground(bg) {
+  if (!Array.isArray(bg) || !bg.length) return ''
+  const list = bg.map(b => [ts(b.stage), b.name,
+                            typeof b.pct === 'number' && b.pct > 0 ? `${Math.round(b.pct * 100)}%` : '']
+    .filter(Boolean).join(' ')).join('，')
+  return t('背景：{list}', { list })
+}
+
 /** One line for any job's progress. The scans report structured progress,
  *  the file jobs a dict of their own shape — or a plain string. */
 export function fmtJobProgress(p) {
@@ -59,6 +69,8 @@ export function fmtJobProgress(p) {
   else if (p.done && p.total && p.size == null && !p.index) {
     bits.push(`${Math.round(p.done / p.total * 100)}%`)   // a move's bytes
   }
+  const bg = fmtBackground(p.bg)
+  if (bg) bits.push(bg)
   return bits.join(' · ')
 }
 

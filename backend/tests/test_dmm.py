@@ -18,6 +18,7 @@ the rules are tested without asking DMM anything:
 
 Run:  python tests/test_dmm.py      (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import json
 import shutil
 import sys

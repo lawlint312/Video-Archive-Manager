@@ -151,14 +151,19 @@ class _Progress:
             j = _jobs.get(self.job_id)
             return bool(j and j.get("cancel"))
 
-    def item_done(self, key: str, error: str = "") -> None:
+    def item_done(self, key: str, error: str = "", only_its_own: bool = False) -> None:
         """One item of a many-file job is finished — a continue skips it.
 
         Whatever it was writing is finished too, so nothing is left to clean.
+        A job with several items in flight at once (the convert relay: one
+        encoding, one being copied back, the next downloading) passes
+        `only_its_own`: then only the files written from `key` are cleared,
+        and the others' half-written files stay listed for a restart.
         """
         def fn(rec):
             rec["done"][key] = error
-            rec["writing"] = []
+            rec["writing"] = ([w for w in rec["writing"] if w[0] != key]
+                              if only_its_own else [])
         _update_record(self.job_id, fn)
 
 
@@ -176,6 +181,16 @@ def each(progress, items: Iterable, key: Callable[[Any], str]):
         yield it
         if mark:
             mark(key(it))
+
+
+def current() -> Optional[str]:
+    """The job this thread works for — handed to `adopt()` in a helper thread."""
+    return getattr(_current, "job_id", None)
+
+
+def adopt(job_id: Optional[str]) -> None:
+    """Make this (helper) thread's `writing()`/`wrote()` count for `job_id`."""
+    _current.job_id = job_id
 
 
 def writing(src, dst) -> None:

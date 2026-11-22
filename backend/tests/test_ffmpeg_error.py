@@ -9,6 +9,7 @@ line that carried no information was the one line guaranteed to be picked.
 The file behind that report had 51,058 `Invalid NAL unit size` lines. The
 count is the diagnosis: one bad frame is a glitch, 51,058 is a broken file.
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import sys
 from pathlib import Path
 

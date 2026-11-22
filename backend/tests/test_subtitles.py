@@ -14,6 +14,7 @@ moment you press play. It is the two silent ones:
 
 Run:  python tests/test_subtitles.py        (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import shutil
 import subprocess
 import sys

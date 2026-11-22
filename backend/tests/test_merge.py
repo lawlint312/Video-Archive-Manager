@@ -10,6 +10,7 @@ The bugs these cover all cost real data or left real mess:
 Run:  python -m pytest tests/ -q        (from backend/)
       python tests/test_merge.py
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import json
 import shutil
 import sys

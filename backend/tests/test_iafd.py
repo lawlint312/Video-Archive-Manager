@@ -15,6 +15,7 @@ The real page (`Elena Varga`, 44 credits) was measured at 43/62 files
 matched with 0 ambiguous; the 19 non-matches are webcam and social-media clips
 IAFD has no reason to list.
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import sys
 from pathlib import Path
 

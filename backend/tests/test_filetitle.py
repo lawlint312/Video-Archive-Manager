@@ -4,6 +4,7 @@ The move/forget paths are the whole risk here. Getting them wrong is silent —
 the title just is not there any more the next time you look — so each one is
 tested rather than trusted, the same way `videoflags` is.
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import os
 import sys
 from pathlib import Path

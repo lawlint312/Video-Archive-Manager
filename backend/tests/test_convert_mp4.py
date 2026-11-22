@@ -20,6 +20,7 @@ Every fixture here is generated with ffmpeg; no real file is touched.
 
 Run:  python tests/test_convert_mp4.py      (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import subprocess
 import sys
 import tempfile

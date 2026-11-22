@@ -12,6 +12,7 @@ Reads source files only — no database, no data paths.
 
 Run:  python tests/test_serverstrings.py        (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import ast
 import re
 import sys

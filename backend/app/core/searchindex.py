@@ -178,7 +178,8 @@ def _write_disk(data: dict):
 def _refresh(roots: List[Path], inbox: List[Path]):
     global _cache, _refreshing
     try:
-        data = _compute(roots, inbox)
+        with media.LIBRARY_WALK:        # not alongside the counts' walk
+            data = _compute(roots, inbox)
         with _lock:
             old, _cache = _cache, data
         _write_disk(data)

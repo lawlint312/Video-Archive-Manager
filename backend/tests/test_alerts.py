@@ -6,6 +6,7 @@ exactly like the owner signing in, so that is the only signal there is.
 
 Run:  python tests/test_alerts.py        (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import os
 import sys
 import tempfile

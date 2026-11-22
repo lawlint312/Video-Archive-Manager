@@ -17,6 +17,7 @@ these images only have to land on the obvious side of them.
 
 Run:  python tests/test_watermark.py        (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import shutil
 import sys
 import tempfile

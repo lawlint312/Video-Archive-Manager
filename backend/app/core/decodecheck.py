@@ -183,7 +183,7 @@ def _locate_frames(path: Path, limit: int) -> list:
     try:
         r = subprocess.run(
             ["ffmpeg", "-hide_banner", "-nostats", "-v", "info",
-             *SKIP_CHANGED_AUDIO, "-i", str(path),
+             *SKIP_CHANGED_AUDIO, *_demux_fix(path), "-i", str(path),
              "-map", "0:v:0", "-map", "0:a:0?", "-filter:v", "showinfo",
              "-f", "null", "-"],
             capture_output=True, timeout=TIMEOUT, creationflags=SUBPROCESS_FLAGS)
@@ -368,6 +368,15 @@ class Counts(int):
         return obj
 
 
+def _demux_fix(path: Path) -> list:
+    """`media.demux_fix` for this file: VC-1 out of a WMV has no start codes,
+    and with its parser on ffmpeg read a whole file and decoded nothing — the
+    check would report an undecodable film as one long error. One ffprobe,
+    next to a decode that takes minutes."""
+    from .media import demux_fix, probe_video_codec
+    return demux_fix(probe_video_codec(path)[3])
+
+
 def gpu_ok(path: Path) -> bool:
     """True when the first video stream is one NVDEC is known to take."""
     try:
@@ -388,7 +397,8 @@ class Stopped(Exception):
 
 def _run(path: Path, gpu: bool, stop: Optional[Callable[[], bool]] = None,
          on_time: Optional[Callable[[float], None]] = None):
-    cmd = ["ffmpeg", "-hide_banner", "-v", "error", *SKIP_CHANGED_AUDIO]
+    cmd = ["ffmpeg", "-hide_banner", "-v", "error", *SKIP_CHANGED_AUDIO,
+           *_demux_fix(path)]
     if gpu:
         cmd += ["-hwaccel", "cuda", "-hwaccel_output_format", "cuda"]
     # the first audio track rides along (`?`: a silent file has none); it is

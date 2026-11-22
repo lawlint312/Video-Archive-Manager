@@ -61,7 +61,8 @@ def _write_disk(data: dict):
 def _refresh(roots: List[Path]):
     global _cache, _refreshing
     try:
-        data = _compute(roots)
+        with media.LIBRARY_WALK:        # not alongside the search index's walk
+            data = _compute(roots)
         with _lock:
             _cache = data
         _write_disk(data)

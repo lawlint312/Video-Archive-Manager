@@ -18,6 +18,7 @@ const archive = ref([])
 const defaultArchive = ref('')
 const defaultTab = ref('videos')
 const seekSeconds = ref(10)
+const stagingDir = ref('')
 const sheetInterval = ref(60)
 const sheetTileWidth = ref(480)
 const sheetWorkers = ref(4)
@@ -250,6 +251,7 @@ async function load() {
     defaultArchive.value = s.default_archive_root || ''
     defaultTab.value = s.default_browse_tab || 'videos'
     seekSeconds.value = s.seek_seconds ?? 10
+    stagingDir.value = s.convert_staging_dir || ''
     sheetInterval.value = s.sheet_interval ?? 60
     sheetTileWidth.value = s.sheet_tile_width ?? 480
     sheetWorkers.value = s.sheet_workers ?? 4
@@ -278,6 +280,7 @@ async function save() {
         default_archive_root: defaultArchive.value.trim(),
         default_browse_tab: defaultTab.value,
         seek_seconds: Number(seekSeconds.value) || 10,
+        convert_staging_dir: stagingDir.value.trim(),
         sheet_interval: Number(sheetInterval.value) || 60,
         sheet_tile_width: Number(sheetTileWidth.value) || 480,
         sheet_workers: Number(sheetWorkers.value) || 4,
@@ -647,6 +650,17 @@ onMounted(load)
             <div class="item line">
               <label class="lab">{{ t('方向鍵快進/快退秒數') }}</label>
               <input type="number" v-model.number="seekSeconds" min="1" max="300" style="width:100px" />
+            </div>
+          </div>
+
+          <div class="sec">{{ t('轉檔') }}</div>
+          <div class="card">
+            <div class="item">
+              <label class="lab">{{ t('轉檔暫存資料夾') }}</label>
+              <input v-model="stagingDir" :placeholder="t('留空：直接寫在原影片旁邊')" spellcheck="false" />
+              <div class="fhint">
+                {{ t('影片在 NAS 上時，原檔先下載到這個資料夾、在這裡轉完，再一次複製回去；GPU 轉下一支的同時，背景把上一支傳回去，NAS 一次只做一件傳輸。空間不夠（原檔 3 倍再多留 10 GB）的那支照舊直接讀寫原處。轉完就刪。') }}
+              </div>
             </div>
           </div>
 

@@ -8,6 +8,7 @@ mtime, gets deleted mid-flight, and the browser shows a broken image.
 
 Run:  python tests/test_cachelimit.py        (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import os
 import shutil
 import sys

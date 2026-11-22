@@ -13,6 +13,7 @@ pictures of the old file. Now the file's size and mtime are in the cache names
 
 Run:  python tests/test_cachestamp.py      (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import os
 import shutil
 import subprocess

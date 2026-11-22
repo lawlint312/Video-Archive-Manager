@@ -8,6 +8,7 @@ setup calls and nothing else.
 
 Run:  python tests/test_twofactor.py        (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import os
 import sys
 import tempfile

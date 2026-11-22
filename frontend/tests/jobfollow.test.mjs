@@ -75,6 +75,12 @@ check('archive bytes', J.fmtJobProgress({ done: 50, total: 200, speed: 1, name: 
       'c.mp4 · 25%')
 check('folder move', J.fmtJobProgress({ phase: 'move', name: 'd.mp4', index: 4, count: 9 }),
       '4/9 · d.mp4')
+check('convert relay: the background part',
+      J.fmtJobProgress({ index: 2, total: 5, name: 'b.mp4', pct: 0.3,
+                         bg: [{ stage: '下載原檔', name: 'c.mp4', pct: 0.5 },
+                              { stage: '複製回原資料夾', name: 'a.mp4', pct: 0 }] }),
+      '2/5 · b.mp4 · 30% · 背景：下載原檔 c.mp4 50%，複製回原資料夾 a.mp4')
+check('no background, nothing added', J.fmtBackground(undefined), '')
 check('plain string', J.fmtJobProgress('(2/5) 森田花梨'), '(2/5) 森田花梨')
 check('scan progress', J.fmtJobProgress({ phase: 2, phases: 2, label: '比對', done: 1, total: 4 }),
       '階段 2/2 · 比對 · 1 / 4')

@@ -35,6 +35,7 @@ before the change.
 
 Run:  python tests/test_colour_metadata.py        (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import shutil
 import subprocess
 import sys

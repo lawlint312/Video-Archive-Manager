@@ -24,7 +24,7 @@ from typing import Callable, Optional
 
 from . import checkcache, decodecheck, mp4index, repair, retime
 from .progress import Reporter
-from .media import SUBPROCESS_FLAGS, VIDEO_EXT, ffmpeg_error
+from .media import SUBPROCESS_FLAGS, VIDEO_EXT, ffmpeg_error, nvdec_ok
 
 log = logging.getLogger("vam.convert")
 
@@ -207,12 +207,24 @@ def staging_for(src: Path) -> Path:
 
 # ── running ffmpeg ───────────────────────────────────────────────────────────
 
+def gpu_decodes(action: str, info: dict, gpu: bool) -> bool:
+    """Whether this run decodes on the GPU: only a re-encode that already
+    encodes there, and only a format on the measured list."""
+    return bool(gpu and action == "reencode"
+                and nvdec_ok(info.get("vcodec", ""), info.get("pix_fmt", "")))
+
+
 def _build_cmd(src: Path, dst: Path, action: str, info: dict,
-               crf: int = 20, gpu: bool = False) -> list:
+               crf: int = 20, gpu: bool = False,
+               gpu_decode: bool = False) -> list:
     # +genpts repairs the missing/rolling timestamps that broadcast-style TS
     # captures often carry
+    # VC-1 straight out of a WMV has no start codes for ffmpeg's parser to
+    # split on: without `noparse` it reads the whole file and writes nothing
+    # (AVOP-071, 2026-11-21; see media.demux_fix)
+    flags = "+genpts" + ("+noparse+nofillin" if info.get("vcodec") == "vc1" else "")
     cmd = ["ffmpeg", "-hide_banner", "-v", "error", "-y",
-           "-fflags", "+genpts", "-i", str(src),
+           "-fflags", flags, "-i", str(src),
            "-map", "0:v:0", "-map", "0:a:0?"]
     # Anything that decodes the audio must not stop at a corrupt frame that
     # claims new parameters (decodecheck.SKIP_CHANGED_AUDIO) — that is how
@@ -271,12 +283,23 @@ def _build_cmd(src: Path, dst: Path, action: str, info: dict,
             if info.get("acodec") == "aac" and not is_mp4(src):
                 cmd += ["-bsf:a", "aac_adtstoasc"]
     else:
+        if gpu and gpu_decode:
+            # Decoded by NVDEC and kept on the card: scale_cuda only converts
+            # to 8-bit 4:2:0 (nv12), NVENC reads it from there. Not one frame
+            # crosses to system memory, so the CPU does almost nothing —
+            # 60 s of 1080p H.264: 20.1 CPU-seconds → 1.9, the same 12 s of
+            # wall time (NVENC is the limit either way). See media.NVDEC_OK.
+            i = cmd.index("-i")
+            cmd[i:i] = ["-hwaccel", "cuda", "-hwaccel_output_format", "cuda"]
+            cmd += ["-vf", "scale_cuda=format=nv12"]
         if gpu:
             cmd += ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr",
                     "-cq", str(crf)]
         else:
             cmd += ["-c:v", "libx264", "-crf", str(crf), "-preset", "medium"]
-        cmd += ["-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k"]
+        if not (gpu and gpu_decode):
+            cmd += ["-pix_fmt", "yuv420p"]
+        cmd += ["-c:a", "aac", "-b:a", "192k"]
 
     if action in _COPIES_VIDEO and info.get("vcodec") == "hevc":
         # MKV and TS carry H.265 as `hev1`, which Safari and iOS refuse
@@ -289,22 +312,71 @@ def _build_cmd(src: Path, dst: Path, action: str, info: dict,
 _TIME_RE = re.compile(rb"out_time_ms=(\d+)")
 
 
+class Stopped(Exception):
+    """The user stopped the job while this file was being converted."""
+
+
 def run_one(src: Path, dst: Path, action: str, info: dict,
             crf: int = 20, gpu: bool = False,
-            progress: Optional[Callable[[float], None]] = None) -> None:
-    """Convert one file. Raises RuntimeError with ffmpeg's message on failure.
+            progress: Optional[Callable[[float], None]] = None,
+            cancelled: Optional[Callable[[], bool]] = None) -> None:
+    """Convert one file. Raises RuntimeError with ffmpeg's message on failure,
+    `Stopped` if `cancelled()` turned true and ffmpeg was ended for it.
 
     stderr is drained by its own thread, as in `clip._run_cmd`. Reading it
     only after stdout ends deadlocks once ffmpeg has more to say than the
     pipe holds — and on Windows that is a few KB. Clean files say nothing,
     so this hid until the audio fix of MTALL-120: 79 corrupt AAC packets,
     a decoder line each, and ffmpeg sat blocked at 62% with 0 CPU.
+
+    `cancelled` is watched by a thread of its own, not checked per progress
+    line: the file that made the converter stoppable (AVOP-071, VC-1 that
+    ffmpeg cannot decode, 2026-11-21) produced no progress at all — it read
+    the source for minutes at 0% with nothing written.
+
+    A re-encode on the GPU decodes there too when the format is on the
+    measured list (`gpu_decodes`); if that run fails for any reason — a busy
+    or out-of-memory card, a stream NVDEC turns down mid-way — the file is
+    converted again from the start with the CPU decoding, as before.
     """
-    cmd = _build_cmd(src, dst, action, info, crf, gpu)
+    if gpu_decodes(action, info, gpu):
+        try:
+            _run_ffmpeg(_build_cmd(src, dst, action, info, crf, gpu, True),
+                        src, info, progress, cancelled)
+            return
+        except RuntimeError as e:
+            log.warning("GPU 解碼失敗，改用 CPU 解碼重轉：%s（%s）", e, src.name)
+            dst.unlink(missing_ok=True)
+            if cancelled and cancelled():
+                raise Stopped()
+    _run_ffmpeg(_build_cmd(src, dst, action, info, crf, gpu),
+                src, info, progress, cancelled)
+
+
+def _run_ffmpeg(cmd: list, src: Path, info: dict,
+                progress: Optional[Callable[[float], None]],
+                cancelled: Optional[Callable[[], bool]]) -> None:
     total = max(info.get("duration") or 0, 0.001)
+    if cancelled and cancelled():
+        raise Stopped()             # asked while waiting for its turn or its source
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             creationflags=SUBPROCESS_FLAGS)
     err_parts: list = []
+    stopped = threading.Event()
+    finished = threading.Event()
+
+    def _watch():
+        while not finished.wait(0.5):
+            if cancelled():
+                stopped.set()
+                try:
+                    proc.kill()
+                except OSError:
+                    pass
+                return
+
+    if cancelled:
+        threading.Thread(target=_watch, daemon=True).start()
 
     def _drain():
         try:
@@ -326,8 +398,11 @@ def run_one(src: Path, dst: Path, action: str, info: dict,
     finally:
         proc.stdout.close()
         proc.wait()
+        finished.set()
         pump.join(timeout=5)
         proc.stderr.close()
+    if stopped.is_set():
+        raise Stopped()
     err = b"".join(err_parts).decode("utf-8", "replace").strip()
     if proc.returncode != 0:
         # The whole thing goes to the log even though only a summary reaches

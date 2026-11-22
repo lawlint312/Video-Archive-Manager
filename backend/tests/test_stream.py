@@ -14,6 +14,7 @@ guard the behaviour we used to implement by hand and now delegate.
 Run:  python -m pytest tests/ -q        (from backend/)
       python tests/test_stream.py
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import os
 import sys
 import tempfile
@@ -228,7 +229,14 @@ def leak_test():
     main.app.dependency_overrides[auth.current_user] = lambda: {"id": 1}
     main._checked_path = lambda path, user: Path(path)
 
-    cfg = uvicorn.Config(main.app, host="127.0.0.1", port=0, log_level="error")
+    # lifespan="off": a real uvicorn runs the app's startup, and that points
+    # the job registry back at the real data/ and recovers "interrupted" jobs.
+    # On 2026-11-21 it found the running service's convert of AVOP-071 in
+    # that registry, ended its ffmpeg as an orphan and wrote a false notice
+    # into data/jobs_interrupted.json. It also opened the real database and
+    # started the backup and schedule threads. None of it is under test here.
+    cfg = uvicorn.Config(main.app, host="127.0.0.1", port=0, log_level="error",
+                         lifespan="off")
     server = uvicorn.Server(cfg)
     t = threading.Thread(target=server.run, daemon=True)
     t.start()

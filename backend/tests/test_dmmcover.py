@@ -14,6 +14,7 @@ The parts that would fail quietly:
 
     python tests/test_dmmcover.py
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import io
 import shutil
 import sys

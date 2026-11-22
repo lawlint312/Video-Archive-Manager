@@ -11,6 +11,7 @@ those pairs nag for ever.
 
 Run:  python tests/test_pairs.py        (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import shutil
 import sys
 import tempfile

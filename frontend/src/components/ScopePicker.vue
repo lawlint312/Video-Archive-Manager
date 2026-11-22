@@ -19,6 +19,7 @@ import { api, errText } from '../api'
 import { isPicked, togglePath, applyAll, visibleItems,
          rootCounts } from '../scopefilter'
 import Icon from './Icon.vue'
+import RootWait from './RootWait.vue'
 import { t } from '../i18n'
 
 const props = defineProps({
@@ -44,6 +45,9 @@ const emit = defineEmits(['update:selected'])
 const inbox = ref([])
 const chars = ref([])
 const error = ref('')
+// until /api/scope answers: an empty list then is not "no folders" — saying
+// （沒有歸檔資料夾） for those seconds read as the list being broken
+const loaded = ref(false)
 // paths whose state differs from `defaultAll`
 const flipped = ref(new Set(load()))
 
@@ -103,6 +107,8 @@ onMounted(async () => {
     emit('update:selected', selected.value)
   } catch (e) {
     error.value = t('無法載入資料夾清單：') + errText(e)
+  } finally {
+    loaded.value = true
   }
 })
 
@@ -124,7 +130,7 @@ defineExpose({ inboxOn, charsOn, selected, selectWhere })
     <div class="tally" :class="{ none: !selected.length }">
       <Icon :name="selected.length ? 'checked' : 'warn'" :size="13" />
       {{ t('已選') }} <b>{{ selected.length }}</b> {{ t('/ {n} 個資料夾', { n: all.length }) }}
-      <span v-if="!selected.length" class="hint">{{ t('— 請勾選要處理的資料夾') }}</span>
+      <span v-if="loaded && !selected.length" class="hint">{{ t('— 請勾選要處理的資料夾') }}</span>
       <span class="spacer"></span>
       <button class="lnk" :class="{ on: onlySelected }"
               @click="onlySelected = !onlySelected">
@@ -196,7 +202,11 @@ defineExpose({ inboxOn, charsOn, selected, selectWhere })
                what tells those rows apart, which a truncated path did not -->
           <span class="root" :title="c.path">{{ c.root_label }}</span>
         </label>
-        <div v-if="!chars.length" class="dimline">{{ t('（沒有歸檔資料夾）') }}</div>
+        <div v-if="!loaded" class="dimline">
+          {{ t('讀取資料夾清單…') }}
+          <RootWait />
+        </div>
+        <div v-else-if="!chars.length" class="dimline">{{ t('（沒有歸檔資料夾）') }}</div>
         <div v-else-if="!shownChars.length" class="dimline">
           {{ onlySelected && !q && !rootFilter
              ? t('目前沒有勾選任何歸檔資料夾。')

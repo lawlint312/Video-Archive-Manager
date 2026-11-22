@@ -16,6 +16,7 @@ JSON inside a saved HTML file:
 
 Run:  python tests/test_avbase.py      (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import json
 import shutil
 import sys

@@ -7,6 +7,7 @@ about to read.
 
 Run:  python tests/test_logprune.py        (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import shutil
 import sys
 import tempfile

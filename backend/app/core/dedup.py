@@ -18,8 +18,8 @@ from typing import Any, List, Optional, Callable, Dict, Tuple
 
 from . import scancount
 from .checkcache import MISS, Store
-from .media import (scan_videos_with_stat, probe_video, COLOUR_FIX,
-                    SUBPROCESS_FLAGS)
+from .media import (scan_videos_with_stat, probe_video, probe_video_codec,
+                    COLOUR_FIX, SUBPROCESS_FLAGS, demux_fix)
 from .progress import Reporter
 
 log = logging.getLogger("vam.dedup")
@@ -46,7 +46,7 @@ def partial_hash(path: Path, chunk: int = 4 << 20) -> Optional[str]:
 
 # ── Tier 2: perceptual hash via ffmpeg ───────────────────────────────────────
 
-def _frame_ahash(video: Path, t: float) -> Optional[int]:
+def _frame_ahash(video: Path, t: float, codec: str = "") -> Optional[int]:
     """Extract one frame at time t, downscale to 8x8 gray, return 64-bit aHash.
 
     The retry with `COLOUR_FIX` is for files whose colour metadata swscale
@@ -58,7 +58,8 @@ def _frame_ahash(video: Path, t: float) -> Optional[int]:
         data = b""
         try:
             r = subprocess.run(
-                ["ffmpeg", "-ss", str(max(0, t)), "-i", str(video), "-vframes", "1",
+                ["ffmpeg", *demux_fix(codec), "-ss", str(max(0, t)),
+                 "-i", str(video), "-vframes", "1",
                  "-vf", vf, "-f", "rawvideo", "-"],
                 capture_output=True, timeout=30, creationflags=SUBPROCESS_FLAGS)
             data = r.stdout
@@ -77,12 +78,14 @@ def _frame_ahash(video: Path, t: float) -> Optional[int]:
 
 def video_phash(video: Path,
                 pcts=(0.10, 0.30, 0.50, 0.70, 0.90)) -> Optional[List[int]]:
-    dur, _, _ = probe_video(video)
+    # the codec too: VC-1 out of a WMV needs ffmpeg's parser off
+    # (media.demux_fix), or every frame grab reads to the timeout
+    dur, _, _, codec = probe_video_codec(video)
     if dur <= 0:
         return None
     hashes = []
     for p in pcts:
-        h = _frame_ahash(video, dur * p)
+        h = _frame_ahash(video, dur * p, codec)
         if h is not None:
             hashes.append(h)
     return hashes or None

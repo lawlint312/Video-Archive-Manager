@@ -13,6 +13,7 @@ would ever notice which ones were missing.
 
 Run:  python tests/test_wikiimport.py      (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import sys
 from pathlib import Path
 

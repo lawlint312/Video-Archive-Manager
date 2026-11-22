@@ -211,6 +211,20 @@ const toolMenu = ref(false)
 function runTool(tool) { toolMenu.value = false; tool.run() }
 const showSettings = ref(false)
 const userMenu = ref(false)
+const server = computed(() => store.user?.server?.version ? store.user.server : null)
+const startedText = computed(() => {
+  const d = new Date((server.value?.started || 0) * 1000)
+  const p = n => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+})
+const verTitle = computed(() => {
+  const s = server.value
+  if (!s) return ''
+  const lines = [t('版本 v{version}', { version: s.version })]
+  if (s.ahead) lines.push(t('這個版本之後又有 {n} 個提交（最新 {commit}，{date}）', { n: s.ahead, commit: s.commit, date: s.date }))
+  if (s.dirty) lines.push(t('伺服器啟動時，程式有還沒提交的修改'))
+  return lines.join('\n')
+})
 const showPassword = ref(false)
 
 function openPassword() { userMenu.value = false; showPassword.value = true }
@@ -509,6 +523,15 @@ onMounted(checkAuth)
             <div class="usep"></div>
             <button class="uitem ib out" @click="userMenu = false; logout()">
               <Icon name="logout" :size="14" /> {{ t('登出') }}</button>
+            <!-- Which code the server is running (backend/app/version.py),
+                 read when it started: answers "was it restarted, is my
+                 change in?" without a terminal. -->
+            <div v-if="server" class="uver" :title="verTitle">
+              <div>VAM v{{ server.version }}<span v-if="server.ahead"> +{{ server.ahead }}</span><span
+                v-if="server.commit"> · {{ server.commit }}</span><span
+                v-if="server.dirty" class="udirty"> · {{ t('含未提交的修改') }}</span></div>
+              <div>{{ t('伺服器啟動於 {time}', { time: startedText }) }}</div>
+            </div>
           </div>
         </template>
       </div>
@@ -761,6 +784,9 @@ onMounted(checkAuth)
 .ulabel { color: var(--dim); font-size: 11px; padding: 4px 8px 2px; gap: 4px; }
 .ltick { display: inline-block; width: 14px; color: var(--accent); }
 .uitem.lang.cur { color: var(--accent); }
+.uver { color: var(--dim); font-size: 11px; padding: 6px 8px 2px; line-height: 1.5;
+  border-top: 1px solid #313148; margin-top: 4px; cursor: default; }
+.udirty { color: var(--warn, #e0a040); }
 .toolmenu .on { background: var(--hover); }
 
 /* ── tablet width ──────────────────────────────────────────────────────────

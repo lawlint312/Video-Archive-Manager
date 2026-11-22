@@ -7,6 +7,7 @@ which settings produced it makes two runs indistinguishable.
 
 Run:  python tests/test_shrink.py        (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import json
 import shutil
 import subprocess

@@ -30,7 +30,7 @@ import threading
 from pathlib import Path
 from typing import Callable, Optional
 
-from .media import SUBPROCESS_FLAGS
+from .media import SUBPROCESS_FLAGS, demux_fix_for, video_codec_of
 
 log = logging.getLogger("vam.clip")
 
@@ -46,6 +46,14 @@ _SPACE_MARGIN = 1.15        # estimates are rough; refuse to fill the disk
 # alone and ffmpeg will refuse loudly if TS cannot carry it, which is the
 # right outcome: the message points at 精準切割.
 _TS_BSF = {"h264": "h264_mp4toannexb", "hevc": "hevc_mp4toannexb"}
+
+# VC-1 copied out of a WMV into MP4 has bare frames with no start codes
+# (media.demux_fix). Copy mode cuts through MPEG-TS, which carries VC-1 only
+# with start codes: the parts would come out unplayable, and the result would
+# still be VC-1, which no browser plays. Precise mode decodes (parser off)
+# and re-encodes to H.264, so it is the way to cut these (2026-11-21).
+COPY_REFUSED = "vc1"
+COPY_REFUSED_MSG = "這支影片是 VC-1，無法用複製切割，請改用精準切割（會重新編碼成 H.264）"
 
 
 def keyframe_before(src: Path, t: float) -> Optional[float]:
@@ -64,7 +72,7 @@ def keyframe_before(src: Path, t: float) -> Optional[float]:
         lo = max(0.0, t - window)
         try:
             r = subprocess.run(
-                ["ffprobe", "-v", "error",
+                ["ffprobe", "-v", "error", *demux_fix_for(src),
                  "-read_intervals", f"{lo}%{t + 0.001}",
                  "-select_streams", "v:0", "-skip_frame", "nokey",
                  "-show_entries", "frame=pts_time", "-of", "json", str(src)],
@@ -91,7 +99,8 @@ def first_keyframe(src: Path) -> Optional[float]:
     """
     try:
         r = subprocess.run(
-            ["ffprobe", "-v", "error", "-read_intervals", "%+5",
+            ["ffprobe", "-v", "error", *demux_fix_for(src),
+             "-read_intervals", "%+5",
              "-select_streams", "v:0", "-skip_frame", "nokey",
              "-show_entries", "frame=pts_time", "-of", "json", str(src)],
             capture_output=True, timeout=180, creationflags=SUBPROCESS_FLAGS)
@@ -173,6 +182,8 @@ def plan(src: Path, segments, precise: bool,
         return {"ok": False, "error": "沒有選取任何片段"}
 
     clean = merge_ranges(clean)
+    if not precise and video_codec_of(src) == COPY_REFUSED:
+        return {"ok": False, "error": COPY_REFUSED_MSG}
     # A segment that snaps to the file's own first keyframe is reported — and
     # cut — as starting at 0. The first keyframe is usually a hair after zero
     # (0.033 and 0.017 on two real files), and treating that as a distinct
@@ -216,7 +227,7 @@ def plan(src: Path, segments, precise: bool,
 def _build_encode_cmd(src: Path, dst: Path, begin: float, span: float,
                       crf: int, gpu: bool) -> list:
     """Precise mode: decode, cut to the frame, re-encode."""
-    return ["ffmpeg", "-hide_banner", "-v", "error", "-y",
+    return ["ffmpeg", "-hide_banner", "-v", "error", "-y", *demux_fix_for(src),
             "-ss", f"{begin:.6f}", "-i", str(src), "-t", f"{span:.6f}",
             "-map", "0:v:0", "-map", "0:a:0?"] + _encoder(crf, gpu) + [
             "-movflags", "+faststart", "-progress", "pipe:1", "-nostats",
@@ -348,8 +359,9 @@ def _build_join_cmd(src: Path, dst: Path, parts, crf: int, gpu: bool) -> list:
     temporary TS parts instead.
     """
     cmd = ["ffmpeg", "-hide_banner", "-v", "error", "-y"]
+    fix = demux_fix_for(src)
     for a, b in parts:
-        cmd += ["-ss", f"{a:.6f}", "-to", f"{b:.6f}", "-i", str(src)]
+        cmd += [*fix, "-ss", f"{a:.6f}", "-to", f"{b:.6f}", "-i", str(src)]
     n = len(parts)
     chain = "".join(f"[{i}:v:0][{i}:a:0]" for i in range(n))
     cmd += ["-filter_complex", f"{chain}concat=n={n}:v=1:a=1[v][a]",
@@ -368,6 +380,8 @@ def run(src: Path, dst: Path, parts, precise: bool, info: dict,
     Raises RuntimeError carrying ffmpeg's own last line on failure.
     """
     total = sum(p["duration"] for p in parts)
+    if not precise and video_codec_of(src) == COPY_REFUSED:
+        raise RuntimeError(COPY_REFUSED_MSG)
 
     if precise:
         cmd = (_build_encode_cmd(src, dst, parts[0]["start"], total, crf, gpu)

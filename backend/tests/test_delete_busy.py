@@ -13,6 +13,7 @@ which of the three cases it is.
 
 Run:  python tests/test_delete_busy.py        (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import os
 import shutil
 import subprocess

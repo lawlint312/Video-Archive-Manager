@@ -19,6 +19,7 @@ So the assertions here are about the four silent failures:
 
 Run:  python tests/test_videoflags.py      (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import sys
 import tempfile
 from pathlib import Path

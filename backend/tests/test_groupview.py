@@ -16,6 +16,7 @@ The rules worth pinning down:
 
 Run:  python tests/test_groupview.py        (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import shutil
 import sys
 import tempfile

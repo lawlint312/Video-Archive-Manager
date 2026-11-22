@@ -10,6 +10,7 @@ it, because the failure modes there are silent:
 
 Run:  python tests/test_personscan.py        (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import os
 import shutil
 import sys

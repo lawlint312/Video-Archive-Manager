@@ -16,6 +16,7 @@ discriminate: swapping the TS parts back to MP4 makes `test_join` fail.
 
 Run:  python tests/test_clip.py        (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import json
 import subprocess
 import sys

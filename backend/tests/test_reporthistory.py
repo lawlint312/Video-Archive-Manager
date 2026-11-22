@@ -13,6 +13,7 @@ that writes into the real data/ is how a real report was lost before.
 
 Run:  python tests/test_reporthistory.py        (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import json
 import shutil
 import sys

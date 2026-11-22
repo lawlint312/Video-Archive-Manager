@@ -121,7 +121,7 @@ If they are not installed, these two features say in the interface which package
 
 Every tool that changes a video **verifies** the result: if verification fails, the original is not deleted.
 
-- **Convert**: for videos a browser cannot play, first tries a **remux without re-encoding**, and only re-encodes when that is not enough.
+- **Convert**: for videos a browser cannot play (WMV's VC-1 included), first tries a **remux without re-encoding**, and only re-encodes when that is not enough. For videos on a NAS you can set a local staging folder: files are downloaded and converted there, and the previous one is copied back while the GPU converts the next.
 - **Repair**: rescues fragmented MP4s mislabelled as `.ts`, masks corrupted frames, fixes audio dropouts and interrupted recordings, and corrects frame timing that causes stutter.
 - **Full decode check**: decodes every frame once to find files that look fine but are broken in the middle.
 - **Shrink**: re-encodes to save space, **always to a new file**. You can play the original and the smaller version side by side, in sync, and compare quality before deciding which to keep.

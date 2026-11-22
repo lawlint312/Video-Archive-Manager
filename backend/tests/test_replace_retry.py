@@ -9,6 +9,7 @@ Temp files only; the waits are patched out.
 
 Run:  python tests/test_replace_retry.py        (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import sys
 import tempfile
 from pathlib import Path

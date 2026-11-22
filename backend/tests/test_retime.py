@@ -13,6 +13,7 @@ verification was done on the user's own files (frame counts identical at
 decoded frames compared as a multiset over 120 s with none unique to either
 side). What is tested is everything that decides *whether* to touch a file.
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import json
 import os
 import subprocess

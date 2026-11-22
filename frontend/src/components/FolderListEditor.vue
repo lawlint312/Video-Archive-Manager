@@ -116,7 +116,10 @@ async function go(p) {
   dirBusy.value = true
   dirErr.value = ''
   try {
-    const r = await api('/api/settings/folders?path=' + encodeURIComponent(p || ''))
+    // POST: as a GET a link on another site could make the server connect
+    // out to a `\\host` (backend `browse_folders`)
+    const r = await api('/api/settings/folders', {
+      method: 'POST', body: JSON.stringify({ path: p || '' }) })
     cur.value = r.path
     curInput.value = r.path
     dirs.value = r.dirs

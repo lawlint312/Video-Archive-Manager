@@ -13,6 +13,7 @@ right while the wiring is wrong, and only a request finds out.
   mode), a viewer cannot scan or apply, and renaming the character carries the
   setting.
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import os
 import sys
 import tempfile

@@ -13,6 +13,7 @@ something the user typed.
 
 Run:  python tests/test_tags.py        (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import json
 import sys
 import tempfile
@@ -59,7 +60,13 @@ def test_endpoints_agree():
     print("\nHTTP：讀和寫回傳的形狀必須一致")
     import tempfile as tf
     from fastapi.testclient import TestClient        # noqa: E402
-    from app import auth, main                       # noqa: E402
+    from app import auth, db, main, roles            # noqa: E402
+
+    # A fresh database (see _tmpdata): the permission check looks the
+    # editor group up in it. This test used to pass only by reading the
+    # real vam.db.
+    db.init_db()
+    roles.seed()
 
     with tf.TemporaryDirectory() as td:
         folder = Path(td) / "高田さち子"

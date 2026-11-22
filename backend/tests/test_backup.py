@@ -6,6 +6,7 @@ has been failing for weeks while the settings page still says "on".
 
 Run:  python tests/test_backup.py        (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import os
 import sqlite3
 import sys

@@ -16,6 +16,7 @@ import logging
 import hashlib
 import mimetypes
 import tempfile
+import queue
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
@@ -35,6 +36,7 @@ from pydantic import BaseModel
 
 from .config import (CACHE_DIR, DATA_DIR, INIT_ADMIN_USER, INIT_ADMIN_PASSWORD,
                      SESSION_COOKIE, SESSION_DAYS)
+from .core import localstage
 from .core import (media, dedup, imgdedup, faces, charstats, convert,
                    javdb, performers, searchindex, idolprofile,
                    contactsheet, cachelimit, clip, repair, shrink, pairs, reporthistory,
@@ -43,6 +45,7 @@ from .core import (media, dedup, imgdedup, faces, charstats, convert,
                    alerts, releasedate, decodecheck, nfo, dmm, avbase, catalog,
                    gfriends, dmmcover, shrinkstats, schedule, runlog)
 from . import db, auth, jobs, security, roles, settings as app_settings
+from . import version as vam_version
 
 is_allowed = app_settings.is_allowed
 
@@ -86,6 +89,14 @@ def _prune_logs(log_dir: Path, keep: int = LOG_KEEP_RUNS):
 def _setup_logging():
     """Console plus one file per run.
 
+    Called from `_startup()`, not at import. Every backend test imports this
+    module, and when this ran at import each of them opened a fresh log file
+    in the real data/logs and pruned it to the newest LOG_KEEP_RUNS — a full
+    suite (one process per test file) deleted every real server log, and
+    tests' temp paths showed up in the live server's history. Startup is the
+    one place only a real server reaches: uvicorn runs it, and the tests use
+    TestClient without `with`, which never does.
+
     The server is normally launched with its console window hidden, so console
     output goes nowhere you can read afterwards — which made "why did that scan
     return what it did?" unanswerable. The file survives however it was started.
@@ -123,8 +134,6 @@ def _setup_logging():
 # The built frontend, served by this process in normal use.
 # backend/app/main.py -> backend/app -> backend -> repo root
 DIST = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
-
-_setup_logging()
 
 # No /docs, /redoc or /openapi.json. FastAPI serves them by default and the
 # app never uses them, but once the site was public they handed anyone the
@@ -277,6 +286,12 @@ def _busy_reason(p: Path) -> Optional[str]:
 
 @app.on_event("startup")
 def _startup():
+    # First, so everything below lands in this run's file.
+    _setup_logging()
+    if DIST.is_dir():
+        log.info("serving the built frontend from %s", DIST)
+    else:
+        log.warning("no built frontend at %s — run build.bat", DIST)
     db.init_db()
     roles.seed()
     # thumbnails used to live directly in the cache root, mixed in with
@@ -349,6 +364,7 @@ def _files_changed():
     """
     charstats.invalidate()
     searchindex.invalidate()
+    media.forget_names()
 
 
 def _resumable(endpoint: str, body: BaseModel, user: dict) -> dict:
@@ -680,7 +696,8 @@ def me(request: Request, user: dict = Depends(auth.current_user)):
         ip = security.client_ip(request,
                                 app_settings.get_cached().get("trust_proxy", False))
         auth.touch_session(token, ip)
-    return auth.public_user(**user)
+    # which code this process loaded (version.py): the account menu shows it
+    return {**auth.public_user(**user), "server": vam_version.INFO}
 
 
 class LangBody(BaseModel):
@@ -941,6 +958,7 @@ class SettingsBody(BaseModel):
     backup_enabled: Optional[bool] = None
     backup_dir: Optional[str] = None
     backup_keep: Optional[int] = None
+    convert_staging_dir: Optional[str] = None
 
 
 @app.post("/api/settings")
@@ -962,6 +980,11 @@ def update_settings(body: SettingsBody, admin: dict = Depends(auth.require_admin
                                             int(patch["sheet_workers"])))
     if "sheet_hwaccel" in patch and patch["sheet_hwaccel"] not in ("cpu", "gpu"):
         raise HTTPException(status_code=400, detail="invalid sheet_hwaccel")
+    if "convert_staging_dir" in patch:
+        patch["convert_staging_dir"] = patch["convert_staging_dir"].strip()
+        problem = localstage.problem_with(patch["convert_staging_dir"])
+        if problem:
+            raise HTTPException(status_code=400, detail=problem)
     if "backup_keep" in patch:
         patch["backup_keep"] = max(backup.KEEP_MIN,
                                    min(backup.KEEP_MAX, int(patch["backup_keep"])))
@@ -994,14 +1017,27 @@ def _drive_letters() -> list:
     return [f"{chr(65 + i)}:\\" for i in range(26) if mask >> i & 1]
 
 
-@app.get("/api/settings/folders")
-def browse_folders(path: str = "", admin: dict = Depends(auth.require_admin)):
+class FoldersBody(BaseModel):
+    path: str = ""
+
+
+@app.post("/api/settings/folders")
+def browse_folders(body: FoldersBody, admin: dict = Depends(auth.require_admin)):
     """Subfolders of `path` on the server, for picking inbox and archive
     folders instead of typing them. Admin only — the same people who can
     already set any folder as a root. Empty `path` lists the drives; a NAS
     share (`\\\\host\\share`) has to be typed once, since Windows cannot list
-    the shares of a host by walking it."""
-    path = path.strip()
+    the shares of a host by walking it.
+
+    POST, not GET (CodeQL alert, 2026-11-22). Listing any folder is the
+    point, so the path cannot be held to the roots the way `is_allowed`
+    does — but as a GET it could be reached from another site: the session
+    cookie is SameSite=Lax, which a top-level link still carries, so an admin
+    clicking `…/api/settings/folders?path=\\\\attacker\\x` made the server
+    open an SMB connection out and offer its NTLM credentials (the same flaw
+    `path_gate` closes for everyone else). A cross-site POST carries no Lax
+    cookie, and a JSON body cannot be sent cross-origin without CORS."""
+    path = (body.path or "").strip()
     if not path:
         return {"path": "", "parent": None, "dirs": _drive_letters()}
     p = os.path.normpath(path)
@@ -1794,10 +1830,11 @@ def folder_scope(user: dict = Depends(auth.require_perm("dedup", "convert", "shr
     inbox = [{"path": str(p), "name": str(p)} for p in app_settings.inbox_paths_for(user)]
     roots = list(app_settings.archive_roots_for(user))
     chars = []
-    for c in media.list_characters(roots):
-        for p in c["paths"]:
+    # the last walk's answer: the picker must not wait on a busy NAS
+    for name, paths in media.character_paths(roots):
+        for p in paths:
             root = _owning_root(p, roots)
-            chars.append({"name": c["name"], "path": p,
+            chars.append({"name": name, "path": p,
                           "root": str(root) if root else "",
                           "root_label": _root_label(root) if root else "?"})
     chars.sort(key=lambda c: (c["name"].lower(), c["path"]))
@@ -3247,6 +3284,7 @@ def costar_videos(root: Optional[str] = Query(None),
     typed, typed_when = filetitle.all_titles(), filetitle.all_released()
     related = avbase.relations_by_work()
     dirs = idx.get("dirs", [])
+    gate = _path_gate(user)          # once, not a root resolve per film
     items = []
     for row in idx.get("v", []):
         name, char, d = row[0], row[1], row[2]
@@ -3256,7 +3294,7 @@ def costar_videos(root: Optional[str] = Query(None),
         if k not in wanted:
             continue
         fk = videoflags.key(full)
-        if any(fk.startswith(o) for o in own) or not is_allowed(full, user):
+        if any(fk.startswith(o) for o in own) or not gate(full):
             continue
         try:
             st = full.stat()
@@ -4378,177 +4416,117 @@ def convert_run(body: ConvertRunBody, user: dict = Depends(auth.require_perm("co
         # (it deletes the source on success) should be answerable afterwards.
         log.info("convert run: %d items %s crf=%d gpu=%s",
                  len(items), [a for _s, a in items], crf, gpu)
-        done, failed, saved = [], [], 0
-        # each file is recorded once finished, so a restart continues with
-        # the rest — not with a second, lossy pass over these (see jobs.each)
-        for idx, (src, action) in enumerate(
-                jobs.each(progress, items, key=lambda it: str(it[0])), 1):
-            # repair keeps the original, so its output cannot take the plain
-            # `.mp4` name — see `repair.target_for`
-            # An MP4 whose codec a browser cannot decode has to end up under
-            # the same name it already has, so it is encoded to a staging file
-            # beside the source and swapped in once verified.
-            # `conceal` keeps the original too: it is lossy, and the damaged
-            # moment still looks damaged — whether that is better is a call
-            # for the pending list, made by someone looking at both
-            keeps_source = action in ("repair", "conceal")
-            in_place = not keeps_source and convert.is_mp4(src)
-            dst = (repair.target_for(src) if keeps_source
-                   else convert.staging_for(src) if in_place
-                   else convert.target_for(src))
-            progress({"index": idx, "total": len(items), "name": src.name,
-                      "pct": 0.0, "action": action})
-            if dst.exists():
-                failed.append({"path": str(src),
-                               "error": "同名的 .mp4 已存在" if not in_place
-                               else "上一次的暫存檔還在，請先手動刪除"})
-                continue
-            # checked just above that nothing is there: from here on a file at
-            # `dst` is this job's, and a restart may remove a half-written one
-            jobs.writing(src, dst)
+        done, failed = [], []
+        tally = {"saved": 0, "pending": 0}
+        rlock = threading.Lock()        # the finishing thread adds results too
 
-            # Repair does NOT follow the convert rules below, and deliberately
-            # so. Those end by deleting the source once `verify()` matches its
-            # duration — but a file that needs repairing cannot be read at all,
-            # so there is nothing to compare against, and the damaged original
-            # is the only complete copy of the data. It stays; removing it is
-            # the user's call in delete mode.
-            if action == "repair":
-                try:
-                    res = repair.repair(
-                        src, dst,
-                        progress=lambda d, i=idx, n=src.name: progress(
-                            {"index": i, "total": len(items), "name": n,
-                             "pct": 0.0, "action": "repair", **d}))
-                except Exception as e:
-                    dst.unlink(missing_ok=True)
-                    failed.append({"path": str(src), "error": str(e)})
-                    continue
-                pairs.record(_PAIRS_PATH, src, dst, "repair",
-                             dropped=res.get("dropped"),
-                             lost_seconds=res.get("lost_seconds"))
-                done.append({"src": str(src), "dst": str(dst),
-                             "action": "repair", "kept_source": True,
-                             **res})
-                continue
+        def add_failed(path, error):
+            with rlock:
+                failed.append({"path": str(path), "error": error})
 
-            if action == "conceal":
-                info = convert.probe(src)
-                # Where the damage is, so the pending list can take both
-                # players straight there — on a side-by-side of two whole
-                # films nobody can find a one-second glitch by eye.
-                progress({"index": idx, "total": len(items), "name": src.name,
-                          "pct": 0.0, "action": action, "stage": "定位損壞處"})
-                regions = decodecheck.locate_cached(src, DECODE_CHECK_DB)
-                try:
-                    convert.run_one(
-                        src, dst, action, info,
-                        progress=lambda f, i=idx, n=src.name: progress(
-                            {"index": i, "total": len(items), "name": n,
-                             "pct": f, "action": "conceal"}))
-                except Exception as e:
-                    dst.unlink(missing_ok=True)
-                    failed.append({"path": str(src), "error": str(e)})
-                    continue
-                progress({"index": idx, "total": len(items), "name": src.name,
-                          "pct": 1.0, "action": action, "stage": "完整解碼驗證"})
-                problem = convert.verify(info, dst, action)
-                if problem:
-                    dst.unlink(missing_ok=True)
-                    failed.append({"path": str(src),
-                                   "error": f"已保留原檔：{problem}"})
-                    continue
-                pairs.record(_PAIRS_PATH, src, dst, "conceal", regions=regions,
-                             crf=convert.CONCEAL_CRF)
-                done.append({"src": str(src), "dst": str(dst), "action": action,
-                             "kept_source": True, "regions": regions})
-                continue
+        # Stopping (2026-11-21): checked before each file, and ffmpeg is
+        # ended mid-file through `run_one(cancelled=…)`. Repair and retime
+        # run other tools and finish the file in hand first. The file that
+        # was cut short keeps its source; its half-written output is removed.
+        # Files already encoded and waiting to be copied back are finished
+        # (the user's choice, 2026-11-22): they are done work, a minute or two
+        # each, and stopping them would only mean encoding them again.
+        stop_asked = lambda: bool(getattr(progress, "cancelled", False))
+        stopped, left = False, 0
 
-            if action == "retime":
-                # Not an ffmpeg job — the whole point is that `-c copy` cannot
-                # do this (five routes measured, all failed). MP4Box rebuilds
-                # the composition times from the bitstream instead. It has no
-                # progress output, so the stages are reported as they start.
-                try:
-                    retime.retime(
-                        src, dst,
-                        progress=lambda d, i=idx, n=src.name: progress(
-                            {"index": i, "total": len(items), "name": n,
-                             "action": "retime", **d}))
-                except Exception as e:
-                    dst.unlink(missing_ok=True)
-                    failed.append({"path": str(src), "error": str(e)})
-                    continue
-                # Its own verify: the picture data is copied, so what could go
-                # wrong is losing frames while the timestamps are recomputed —
-                # and whether the defect is actually gone rather than faithfully
-                # reproduced. `convert.verify` cannot answer either.
-                problem = retime.verify(src, dst)
-            else:
-                info = convert.probe(src)
-                if action in ("remux", "remux_audio"):
-                    # A remux copies a corrupt audio packet into the new MP4
-                    # untouched, and the browser fails on it there exactly as
-                    # on the source (MTALL-120: converted, still unseekable).
-                    # A few seconds to look first; if any are bad, the audio
-                    # is re-encoded instead of copied.
-                    progress({"index": idx, "total": len(items),
-                              "name": src.name, "pct": 0.0, "action": action,
-                              "stage": "檢查聲音"})
-                    bad_audio = convert.audio_needs_fix(src)
-                    if bad_audio:
-                        log.info("convert: %s has %d corrupt audio packets; "
-                                 "re-encoding the audio", src.name, bad_audio)
-                        action = "audiofix"
-                if action == "gapfix":
-                    # Recomputed here, not trusted from the scan: the packet
-                    # indices are what gets dropped, and the file may have
-                    # changed since.
-                    progress({"index": idx, "total": len(items),
-                              "name": src.name, "pct": 0.0, "action": action,
-                              "stage": "分析斷訊"})
-                    plan = convert.gap_plan(src)
-                    if not plan:
-                        failed.append({"path": str(src),
-                                       "error": "找不到可修復的斷訊（檔案可能已經變了）"})
-                        continue
-                    info = {**info, "drop": plan["drop"],
-                            "fix_audio": convert.audio_needs_fix(src) > 0}
-                    log.info("convert: %s gapfix, %d dropouts, fix_audio=%s",
-                             src.name, plan["gaps"], info["fix_audio"])
-                if action == "gapcut":
-                    # Recomputed here too: the cut points are what get written.
-                    progress({"index": idx, "total": len(items),
-                              "name": src.name, "pct": 0.0, "action": action,
-                              "stage": "分析空白"})
-                    plan = convert.blank_plan(src)
-                    if not plan or not plan["blanks"]:
-                        failed.append({"path": str(src),
-                                       "error": "找不到可去除的空白（檔案可能已經變了）"})
-                        continue
-                    # the expected length, for progress and for `verify`
-                    info = {**info, "blanks": plan["blanks"],
-                            "frames": plan["frames"],
-                            "duration": max(info["duration"] - plan["removed"], 0)}
-                    log.info("convert: %s gapcut, %d blanks, %.0f s removed",
-                             src.name, len(plan["blanks"]), plan["removed"])
-                try:
-                    convert.run_one(
-                        src, dst, action, info, crf=crf, gpu=gpu,
-                        progress=lambda f, i=idx, n=src.name, a=action: progress(
-                            {"index": i, "total": len(items), "name": n,
-                             "pct": f, "action": a}))
-                except Exception as e:
-                    dst.unlink(missing_ok=True)
-                    failed.append({"path": str(src), "error": str(e)})
-                    continue
+        # What the page shows: the file being encoded, plus what the
+        # background is doing (downloading the next source, copying the last
+        # output back) — see the relay below.
+        shown = {"main": {}, "bg": {}}
+        plock = threading.Lock()
 
-                if action == "gapfix":
-                    # the verify decodes the whole output — minutes on a long film
-                    progress({"index": idx, "total": len(items),
-                              "name": src.name, "pct": 1.0, "action": action,
-                              "stage": "完整解碼驗證（需要幾分鐘）"})
-                problem = convert.verify(info, dst, action)
+        def _show():
+            msg = dict(shown["main"])
+            bg = [v for _k, v in sorted(shown["bg"].items()) if v]
+            if bg:
+                msg["bg"] = bg
+            progress(msg)
+
+        def report(d):
+            with plock:
+                shown["main"] = d
+                _show()
+
+        def report_bg(slot, d):
+            with plock:
+                shown["bg"][slot] = d
+                _show()
+
+        def report_encode(i, n, a, f):
+            # ffmpeg reaches 100% with the last frame encoded and then still
+            # moves the MP4's index to the front (`+faststart`), reading and
+            # writing the whole output once more — the bar sat at 100% for
+            # that and looked stuck (the user asked, 2026-11-22). Said instead.
+            d = {"index": i, "total": len(items), "name": n, "pct": f, "action": a}
+            if f >= 0.995:
+                d["stage"] = "整理檔案：把索引搬到檔頭"
+            report(d)
+
+        # ── the relay (2026-11-22, the user's design; core/localstage.py) ──
+        # A source on the NAS is downloaded into the staging folder ahead of
+        # time, encoded there, and handed to the finishing thread, which
+        # verifies it and copies it back while the GPU starts on the next.
+        # Every transfer to or from the NAS takes the NAS's turn, so a
+        # download and a copy back never run at once (the user's rule).
+        folder = app_settings.get_cached().get("convert_staging_dir", "")
+        relayed = lambda a: a not in ("repair", "conceal", "retime")
+        job_id = jobs.current()
+        pf = localstage.Prefetcher(
+            [(str(s), s) for s, a in items
+             if relayed(a) and folder and localstage.is_remote(s)],
+            folder, stop_asked, lambda d: report_bg("down", d),
+            jobs.writing, jobs.wrote, on_start=lambda: jobs.adopt(job_id)).start()
+
+        # Each file is recorded once finished, so a restart continues with the
+        # rest — not with a second, lossy pass over these. A file handed to
+        # the finishing thread is recorded by that thread, once it is really
+        # done; several files are in flight, so only its own half-written
+        # files are taken off the list (`only_its_own`).
+        mark = getattr(progress, "item_done", None)
+        handed = set()
+
+        def item_done(key):
+            if mark:
+                mark(key, only_its_own=True)
+
+        fin_q = queue.Queue()
+
+        def _finisher():
+            jobs.adopt(job_id)
+            while True:
+                job = fin_q.get()
+                if job is None:
+                    return
+                key, fn = job
+                try:
+                    fn()
+                except Exception as e:
+                    log.exception("convert: finishing %s failed", key)
+                    add_failed(key, str(e))
+                finally:
+                    report_bg("up", None)
+                    with rlock:
+                        tally["pending"] -= 1
+                    item_done(key)
+
+        fin = threading.Thread(target=_finisher, daemon=True)
+        fin.start()
+
+        def _changed(src, src_stamp) -> bool:
+            if src_stamp is None:
+                return False
+            try:
+                return localstage.stamp(src) != src_stamp
+            except OSError:
+                return True
+
+        def _tail(src, dst, action, in_place, problem, src_stamp=None):
+            """After the output is at `dst`: replace or remove the original."""
             if problem:
                 # keep both files and let the user look — never delete on doubt
                 if in_place:
@@ -4556,9 +4534,14 @@ def convert_run(body: ConvertRunBody, user: dict = Depends(auth.require_perm("co
                     # sits beside the source under a name that is not a video
                     # anyone asked for, and leaving it would block the retry.
                     dst.unlink(missing_ok=True)
-                failed.append({"path": str(src),
-                               "error": f"驗證失敗，已保留原檔：{problem}"})
-                continue
+                add_failed(src, f"驗證失敗，已保留原檔：{problem}")
+                return
+            if _changed(src, src_stamp):
+                # someone changed the original after it was downloaded: the
+                # output is of the old one, and the new one is not ours to drop
+                dst.unlink(missing_ok=True)
+                add_failed(src, "原檔在轉檔期間被修改過，已保留原檔")
+                return
 
             if in_place:
                 # The path does not change, so notes, face vectors and the
@@ -4573,9 +4556,8 @@ def convert_run(body: ConvertRunBody, user: dict = Depends(auth.require_perm("co
                     _replace_original(src, dst)
                 except Exception as e:
                     dst.unlink(missing_ok=True)
-                    failed.append({"path": str(src),
-                                   "error": f"轉檔成功但無法取代原檔：{e}"})
-                    continue
+                    add_failed(src, f"轉檔成功但無法取代原檔：{e}")
+                    return
                 try:
                     text = media.read_note(src, CACHE_DIR)
                     sidecar = any(_under(src, r) for r in archive_roots)
@@ -4584,10 +4566,11 @@ def convert_run(body: ConvertRunBody, user: dict = Depends(auth.require_perm("co
                         media.write_note(src, CACHE_DIR, text, sidecar=sidecar)
                 except Exception:
                     log.exception("post-convert bookkeeping failed for %s", src)
-                saved += before - src.stat().st_size
-                done.append({"src": str(src), "dst": str(src), "action": action,
-                             "in_place": True})
-                continue
+                with rlock:
+                    tally["saved"] += before - src.stat().st_size
+                    done.append({"src": str(src), "dst": str(src), "action": action,
+                                 "in_place": True})
+                return
 
             before = src.stat().st_size
             try:
@@ -4609,18 +4592,310 @@ def convert_run(body: ConvertRunBody, user: dict = Depends(auth.require_perm("co
             try:
                 _unlink(src)
             except Exception as e:
-                failed.append({"path": str(src),
-                               "error": f"轉檔成功但原檔刪除失敗：{e}"})
-                continue
-            saved += before - dst.stat().st_size
-            done.append({"src": str(src), "dst": str(dst), "action": action})
+                add_failed(src, f"轉檔成功但原檔刪除失敗：{e}")
+                return
+            with rlock:
+                tally["saved"] += before - dst.stat().st_size
+                done.append({"src": str(src), "dst": str(dst), "action": action})
 
+        def _finish_staged(src, action, info, in_place, dst, local, src_stamp):
+            """In the finishing thread: verify the local output, copy it back
+            within the NAS's turn, then replace the original."""
+            name = src.name
+            up = lambda d: report_bg("up", d)
+            up({"stage": "完整解碼驗證（需要幾分鐘）" if action == "gapfix" else "驗證",
+                "name": name, "pct": 0.0})
+            problem = convert.verify(info, local, action)
+            if _changed(src, src_stamp):
+                local.unlink(missing_ok=True)
+                jobs.wrote(local)
+                add_failed(src, "原檔在轉檔期間被修改過，已保留原檔")
+                return
+            if problem and in_place:
+                local.unlink(missing_ok=True)   # nothing to look at (see _tail)
+                jobs.wrote(local)
+            else:
+                # also when verify failed on a new name: that output is kept
+                # beside the source for the user to look at, as before
+                # shown before the turn comes: a download may still be running
+                up({"stage": "複製回原資料夾", "name": name, "pct": 0.0})
+                try:
+                    with localstage.nas(dst, first=True):
+                        localstage.bring_back(
+                            local, dst,
+                            progress=lambda f: up({"stage": "複製回原資料夾",
+                                                   "name": name, "pct": f}))
+                except Exception as e:
+                    local.unlink(missing_ok=True)
+                    jobs.wrote(local)
+                    add_failed(src, f"轉檔成功但複製回原資料夾失敗，已保留原檔：{e}")
+                    return
+                jobs.wrote(local)
+            _tail(src, dst, action, in_place, problem, src_stamp)
+
+        def each_item():
+            for it in items:
+                yield it
+                k = str(it[0])
+                if k not in handed:
+                    item_done(k)
+
+        try:
+            for idx, (src, action) in enumerate(each_item(), 1):
+                if stop_asked():
+                    stopped, left = True, len(items) - idx + 1
+                    break
+                local_src, src_stamp = None, None
+                try:
+                    if relayed(action):
+                        report({"index": idx, "total": len(items), "name": src.name,
+                                "pct": 0.0, "action": action, "stage": "等待下載原檔"})
+                        local_src, src_stamp = pf.take(str(src))
+                        if stop_asked():
+                            stopped, left = True, len(items) - idx + 1
+                            break
+                    # repair keeps the original, so its output cannot take the
+                    # plain `.mp4` name — see `repair.target_for`
+                    # An MP4 whose codec a browser cannot decode has to end up
+                    # under the same name it already has, so it is encoded to a
+                    # staging file beside the source and swapped in once verified.
+                    # `conceal` keeps the original too: it is lossy, and the
+                    # damaged moment still looks damaged — whether that is better
+                    # is a call for the pending list, made by someone looking at
+                    # both
+                    keeps_source = action in ("repair", "conceal")
+                    in_place = not keeps_source and convert.is_mp4(src)
+                    dst = (repair.target_for(src) if keeps_source
+                           else convert.staging_for(src) if in_place
+                           else convert.target_for(src))
+                    report({"index": idx, "total": len(items), "name": src.name,
+                            "pct": 0.0, "action": action})
+                    if dst.exists():
+                        add_failed(src, "同名的 .mp4 已存在" if not in_place
+                                   else "上一次的暫存檔還在，請先手動刪除")
+                        continue
+                    # checked just above that nothing is there: from here on a
+                    # file at `dst` is this job's, and a restart may remove a
+                    # half-written one
+                    jobs.writing(src, dst)
+
+                    # Repair does NOT follow the convert rules below, and
+                    # deliberately so. Those end by deleting the source once
+                    # `verify()` matches its duration — but a file that needs
+                    # repairing cannot be read at all, so there is nothing to
+                    # compare against, and the damaged original is the only
+                    # complete copy of the data. It stays; removing it is the
+                    # user's call in delete mode.
+                    if action == "repair":
+                        try:
+                            with localstage.nas(src, dst, first=True):
+                                res = repair.repair(
+                                    src, dst,
+                                    progress=lambda d, i=idx, n=src.name: report(
+                                        {"index": i, "total": len(items), "name": n,
+                                         "pct": 0.0, "action": "repair", **d}))
+                        except Exception as e:
+                            dst.unlink(missing_ok=True)
+                            add_failed(src, str(e))
+                            continue
+                        pairs.record(_PAIRS_PATH, src, dst, "repair",
+                                     dropped=res.get("dropped"),
+                                     lost_seconds=res.get("lost_seconds"))
+                        with rlock:
+                            done.append({"src": str(src), "dst": str(dst),
+                                         "action": "repair", "kept_source": True,
+                                         **res})
+                        continue
+
+                    if action == "conceal":
+                        with localstage.nas(src, dst, first=True):
+                            info = convert.probe(src)
+                            # Where the damage is, so the pending list can take
+                            # both players straight there — on a side-by-side of
+                            # two whole films nobody can find a one-second glitch
+                            # by eye.
+                            report({"index": idx, "total": len(items), "name": src.name,
+                                    "pct": 0.0, "action": action, "stage": "定位損壞處"})
+                            regions = decodecheck.locate_cached(src, DECODE_CHECK_DB)
+                            try:
+                                convert.run_one(
+                                    src, dst, action, info,
+                                    progress=lambda f, i=idx, n=src.name:
+                                        report_encode(i, n, "conceal", f),
+                                    cancelled=stop_asked)
+                            except convert.Stopped:
+                                dst.unlink(missing_ok=True)
+                                jobs.wrote(dst)     # nothing left for a restart to clean
+                                stopped, left = True, len(items) - idx + 1
+                                break
+                            except Exception as e:
+                                dst.unlink(missing_ok=True)
+                                add_failed(src, str(e))
+                                continue
+                            report({"index": idx, "total": len(items), "name": src.name,
+                                    "pct": 1.0, "action": action, "stage": "完整解碼驗證"})
+                            problem = convert.verify(info, dst, action)
+                        if problem:
+                            dst.unlink(missing_ok=True)
+                            add_failed(src, f"已保留原檔：{problem}")
+                            continue
+                        pairs.record(_PAIRS_PATH, src, dst, "conceal", regions=regions,
+                                     crf=convert.CONCEAL_CRF)
+                        with rlock:
+                            done.append({"src": str(src), "dst": str(dst), "action": action,
+                                         "kept_source": True, "regions": regions})
+                        continue
+
+                    if action == "retime":
+                        # Not an ffmpeg job — the whole point is that `-c copy`
+                        # cannot do this (five routes measured, all failed).
+                        # MP4Box rebuilds the composition times from the
+                        # bitstream instead. It has no progress output, so the
+                        # stages are reported as they start.
+                        with localstage.nas(src, dst, first=True):
+                            try:
+                                retime.retime(
+                                    src, dst,
+                                    progress=lambda d, i=idx, n=src.name: report(
+                                        {"index": i, "total": len(items), "name": n,
+                                         "action": "retime", **d}))
+                            except Exception as e:
+                                dst.unlink(missing_ok=True)
+                                add_failed(src, str(e))
+                                continue
+                            # Its own verify: the picture data is copied, so
+                            # what could go wrong is losing frames while the
+                            # timestamps are recomputed — and whether the defect
+                            # is actually gone rather than faithfully reproduced.
+                            # `convert.verify` cannot answer either.
+                            problem = retime.verify(src, dst)
+                            _tail(src, dst, action, in_place, problem)
+                        continue
+
+                    # ── the ordinary conversions: the relay ──
+                    # `src_in` is what ffmpeg reads: the downloaded copy when
+                    # there is one (then nothing here touches the NAS), else
+                    # the original, read within the NAS's turn.
+                    src_in = local_src or src
+                    with localstage.nas(src_in, first=True):
+                        info = convert.probe(src_in)
+                        if action in ("remux", "remux_audio"):
+                            # A remux copies a corrupt audio packet into the new
+                            # MP4 untouched, and the browser fails on it there
+                            # exactly as on the source (MTALL-120: converted,
+                            # still unseekable). A few seconds to look first; if
+                            # any are bad, the audio is re-encoded instead.
+                            report({"index": idx, "total": len(items),
+                                    "name": src.name, "pct": 0.0, "action": action,
+                                    "stage": "檢查聲音"})
+                            bad_audio = convert.audio_needs_fix(src_in)
+                            if bad_audio:
+                                log.info("convert: %s has %d corrupt audio packets; "
+                                         "re-encoding the audio", src.name, bad_audio)
+                                action = "audiofix"
+                        if action == "gapfix":
+                            # Recomputed here, not trusted from the scan: the
+                            # packet indices are what gets dropped, and the file
+                            # may have changed since.
+                            report({"index": idx, "total": len(items),
+                                    "name": src.name, "pct": 0.0, "action": action,
+                                    "stage": "分析斷訊"})
+                            plan = convert.gap_plan(src_in)
+                            if not plan:
+                                add_failed(src, "找不到可修復的斷訊（檔案可能已經變了）")
+                                continue
+                            info = {**info, "drop": plan["drop"],
+                                    "fix_audio": convert.audio_needs_fix(src_in) > 0}
+                            log.info("convert: %s gapfix, %d dropouts, fix_audio=%s",
+                                     src.name, plan["gaps"], info["fix_audio"])
+                        if action == "gapcut":
+                            # Recomputed here too: the cut points are what get
+                            # written.
+                            report({"index": idx, "total": len(items),
+                                    "name": src.name, "pct": 0.0, "action": action,
+                                    "stage": "分析空白"})
+                            plan = convert.blank_plan(src_in)
+                            if not plan or not plan["blanks"]:
+                                add_failed(src, "找不到可去除的空白（檔案可能已經變了）")
+                                continue
+                            # the expected length, for progress and for `verify`
+                            info = {**info, "blanks": plan["blanks"],
+                                    "frames": plan["frames"],
+                                    "duration": max(info["duration"] - plan["removed"], 0)}
+                            log.info("convert: %s gapcut, %d blanks, %.0f s removed",
+                                     src.name, len(plan["blanks"]), plan["removed"])
+                    # Encoded on a local disk when a staging folder is set and
+                    # has room, then copied over once (core/localstage.py): on
+                    # the NAS the muxer's faststart pass alone took ~10 of a
+                    # file's 16–23 minutes. `out` is where ffmpeg writes; `dst`
+                    # stays the goal.
+                    local = localstage.pick(src, dst, folder)
+                    out = local or dst
+                    if local:
+                        jobs.writing(src, local)   # a restart removes a half-written one
+                    try:
+                        with localstage.nas(src_in, out, first=True):
+                            convert.run_one(
+                                src_in, out, action, info, crf=crf, gpu=gpu,
+                                progress=lambda f, i=idx, n=src.name, a=action:
+                                    report_encode(i, n, a, f),
+                                cancelled=stop_asked)
+                    except convert.Stopped:
+                        out.unlink(missing_ok=True)
+                        jobs.wrote(out)         # nothing left for a restart to clean
+                        stopped, left = True, len(items) - idx + 1
+                        break
+                    except Exception as e:
+                        out.unlink(missing_ok=True)
+                        add_failed(src, str(e))
+                        continue
+
+                    if local:
+                        # the GPU goes on with the next file; this one is
+                        # verified and copied back in the background
+                        handed.add(str(src))
+                        with rlock:
+                            tally["pending"] += 1
+                        fin_q.put((str(src), lambda s=src, a=action, i=info, ip=in_place,
+                                   d=dst, lo=local, st=src_stamp:
+                                   _finish_staged(s, a, i, ip, d, lo, st)))
+                        continue
+
+                    # written straight to `dst`: verified and finished here
+                    if action == "gapfix":
+                        # the verify decodes the whole output — minutes on a long film
+                        report({"index": idx, "total": len(items),
+                                "name": src.name, "pct": 1.0, "action": action,
+                                "stage": "完整解碼驗證（需要幾分鐘）"})
+                    with localstage.nas(dst, first=True):
+                        problem = convert.verify(info, dst, action)
+                        _tail(src, dst, action, in_place, problem, src_stamp)
+                finally:
+                    # the downloaded source is only the encoder's
+                    pf.done_with(local_src)
+        finally:
+            with rlock:
+                waiting = tally["pending"]
+            if waiting:
+                report({"index": len(items) - left, "total": len(items), "name": "",
+                        "pct": 1.0,
+                        "stage": "停止中：等已轉好的檔案傳回" if stopped
+                                 else "等待回傳完成"})
+            # a download waiting for its turn ends once the copies back
+            # queued ahead of it are through
+            pf.close()
+            fin_q.put(None)
+            fin.join()
+
+        saved = tally["saved"]
         _files_changed()
-        log.info("convert done: %d converted, %d failed, saved %.0f MB%s",
+        log.info("convert done: %d converted, %d failed, saved %.0f MB%s%s",
                  len(done), len(failed), saved / 1048576,
+                 f", STOPPED with {left} not converted" if stopped else "",
                  "".join(f"\n    FAILED {f['path']}: {f['error']}"
                          for f in failed))
-        return {"converted": done, "failed": failed, "saved": saved}
+        return {"converted": done, "failed": failed, "saved": saved,
+                "stopped": stopped, "left": left}
 
     return {"job_id": jobs.start(_task, kind="convert_run",
                                  label=f"轉檔 {len(items)} 個檔案",
@@ -5311,7 +5586,8 @@ def dedup_job(job_id: str, user: dict = Depends(auth.require_perm("dedup"))):
 
 # Only these scans check the flag. Accepting it for any job would report
 # "已停止" on work that in fact ran to completion — a lie the UI cannot detect.
-_CANCELLABLE = {"dedup", "imgdedup", "personscan", "convert_decode", "face_index"}
+_CANCELLABLE = {"dedup", "imgdedup", "personscan", "convert_decode", "face_index",
+                "convert_run"}
 
 
 @app.post("/api/jobs/{job_id}/cancel")
@@ -7091,12 +7367,11 @@ class _AppFiles(StaticFiles):
         return resp
 
 
+# Said in `_startup()`, not here: this runs at import, before the run's log
+# file is open, so a line logged here never reached it.
 if DIST.is_dir():
     app.mount("/", _AppFiles(directory=str(DIST), html=True), name="app")
-    log.info("serving the built frontend from %s", DIST)
 else:
-    log.warning("no built frontend at %s — run build.bat", DIST)
-
     @app.get("/", response_class=HTMLResponse)
     def _no_frontend():
         """Better than a bare 404, which reads as "the server is broken"."""

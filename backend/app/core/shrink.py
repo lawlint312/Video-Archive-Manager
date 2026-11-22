@@ -52,7 +52,8 @@ import threading
 from pathlib import Path
 from typing import Callable, Optional
 
-from .media import SUBPROCESS_FLAGS, VIDEO_EXT, popen_background
+from .media import (SUBPROCESS_FLAGS, VIDEO_EXT, demux_fix, nvdec_ok,
+                    popen_background)
 
 log = logging.getLogger("vam.shrink")
 
@@ -91,7 +92,7 @@ def probe(path: Path) -> dict:
         r = subprocess.run(
             ["ffprobe", "-v", "error", "-select_streams", "v:0",
              "-show_entries",
-             "stream=width,height,avg_frame_rate,codec_name"
+             "stream=width,height,avg_frame_rate,codec_name,pix_fmt"
              ":format=duration,size,bit_rate",
              "-of", "json", str(path)],
             capture_output=True, timeout=120, creationflags=SUBPROCESS_FLAGS)
@@ -118,7 +119,7 @@ def probe(path: Path) -> dict:
         fps = 0.0
     return {"width": w, "height": h, "fps": round(fps, 2), "duration": dur,
             "size": size, "bitrate": br, "mbps": round(br / 1e6, 2),
-            "vcodec": s.get("codec_name", "")}
+            "vcodec": s.get("codec_name", ""), "pix_fmt": s.get("pix_fmt", "")}
 
 
 def target_size(w: int, h: int, max_edge: int):
@@ -201,10 +202,14 @@ def build_cmd(src: Path, dst: Path, crf: int, max_edge: int, info: dict,
               start: Optional[float] = None,
               seconds: Optional[float] = None,
               codec: str = DEFAULT_CODEC, gpu: bool = False) -> list:
-    cmd = ["ffmpeg", "-hide_banner", "-v", "error", "-y"]
-    if gpu:
+    # VC-1 out of a WMV: no start codes for ffmpeg's parser (media.demux_fix)
+    cmd = ["ffmpeg", "-hide_banner", "-v", "error", "-y",
+           *demux_fix(info.get("vcodec", ""))]
+    if gpu and nvdec_ok(info.get("vcodec", ""), info.get("pix_fmt", "")):
         # decoding on the CPU would still cost 15% of it; on the GPU, 5%.
-        # A codec NVDEC lacks is decoded in software by ffmpeg itself.
+        # Only for the formats on the measured list: a codec NVDEC lacks is
+        # *not* quietly decoded in software — AV1 with `-hwaccel cuda` sat at
+        # 0% for nine hours (2026-11-22, media.NVDEC_OK); the CPU decodes it.
         cmd += ["-hwaccel", "cuda"]
     if start is not None:
         cmd += ["-ss", f"{start:.2f}"]
@@ -355,6 +360,7 @@ def sample(src: Path, crf: int, max_edge: int, cache: Path,
 
     if not (before.exists() and before.stat().st_size):
         _run(["ffmpeg", "-hide_banner", "-v", "error", "-y",
+              *demux_fix(info.get("vcodec", "")),
               "-noaccurate_seek", "-ss", f"{at:.3f}", "-i", str(src),
               "-t", str(seconds), "-map", "0:v:0", "-map", "0:a:0?",
               "-c", "copy", "-movflags", "+faststart", str(before)], seconds)

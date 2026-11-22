@@ -16,6 +16,7 @@ stage name.
 
 Run:  python tests/test_nfo.py      (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import json
 import shutil
 import sys

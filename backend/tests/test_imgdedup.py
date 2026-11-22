@@ -12,6 +12,7 @@ The cases that matter are the ones that would cost photos:
 
 Run:  python tests/test_imgdedup.py        (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import sys
 import tempfile
 from pathlib import Path

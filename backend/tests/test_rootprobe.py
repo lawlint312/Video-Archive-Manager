@@ -16,6 +16,7 @@ Never touches a real folder: `Path.resolve` is replaced for the test.
 
 Run:  python tests/test_rootprobe.py      (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import asyncio
 import inspect
 import pathlib

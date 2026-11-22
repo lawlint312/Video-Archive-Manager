@@ -18,6 +18,7 @@ refuse a UNC path.
 
 Run:  python tests/test_uncguard.py      (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import os
 import pathlib
 import sys

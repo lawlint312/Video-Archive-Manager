@@ -8,6 +8,7 @@ bare `not found`, and the preview looked perfect right up until the button.
 That is the shape of bug this file exists for: the parts work, the wiring does
 not, and only a request finds out.
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import os
 import sys
 import tempfile
@@ -31,9 +32,9 @@ def check(cond, what):
 
 
 def run():
-    # `mkdtemp` + an ignoring rmtree rather than the context manager: importing
-    # the app opens a log file inside DATA_DIR, and Windows will not delete a
-    # file another handle is holding. The cleanup failing is not a test result.
+    # `mkdtemp` + an ignoring rmtree rather than the context manager: Windows
+    # will not delete a file another handle is still holding (the databases
+    # under DATA_DIR). The cleanup failing is not a test result.
     td = tempfile.mkdtemp(prefix="iafd_apply_")
     try:
         tmp = Path(td)

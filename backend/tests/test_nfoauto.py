@@ -17,6 +17,7 @@ Builds its own folders and databases in a temporary directory.
 
 Run:  python tests/test_nfoauto.py      (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import os
 import shutil
 import sys

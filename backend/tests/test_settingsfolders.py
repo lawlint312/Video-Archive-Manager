@@ -15,6 +15,7 @@ Only ever looks at a temporary directory (and the drive list).
 
 Run:  python tests/test_settingsfolders.py      (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import shutil
 import sys
 import tempfile
@@ -40,24 +41,25 @@ def main_test(tmp: Path):
         (root / name).mkdir(parents=True)
     (root / "file.mp4").write_bytes(b"\0")
 
-    r = main.browse_folders(path=str(root), admin={})
+    browse = lambda p: main.browse_folders(main.FoldersBody(path=p), admin={})
+    r = browse(str(root))
     check(r["dirs"] == ["Alpha", "beta", "gamma"],
           f"只列資料夾、不列隱藏與資源回收筒、不分大小寫排序（{r['dirs']}）")
     check(Path(r["parent"]) == tmp, "上一層是父資料夾")
     check(r["more"] == 0, "沒有被截掉")
 
     try:
-        main.browse_folders(path=str(tmp / "nope"), admin={})
+        browse(str(tmp / "nope"))
         check(False, "不存在的資料夾要報錯")
     except HTTPException as e:
         check(e.status_code == 400 and e.detail, f"不存在：400 加上作業系統的原話（{e.detail}）")
 
-    drives = main.browse_folders(path="", admin={})
+    drives = browse("")
     check(drives["parent"] is None and drives["dirs"]
           and all(d.endswith(("\\", "/")) for d in drives["dirs"]),
           f"空路徑列出磁碟機（{drives['dirs'][:4]}）")
     if drives["dirs"][0].endswith(":\\"):
-        top = main.browse_folders(path=drives["dirs"][0][:2], admin={})
+        top = browse(drives["dirs"][0][:2])
         check(top["path"].endswith(":\\") and top["parent"] == "",
               "磁碟機根目錄：「D:」當成根目錄，上一層回到磁碟機清單")
 
@@ -67,6 +69,35 @@ def main_test(tmp: Path):
     check(res[str(tmp / "nope")]["ok"] is False and res[str(tmp / "nope")]["error"],
           "找不到的資料夾單獨回報，不影響其他列")
     check(len(res) == 2, "空白列忽略")
+
+    print("\nHTTP：只收 POST（GET 會被別的網站的連結觸發）")
+    from fastapi.testclient import TestClient
+    from app import auth
+    main.app.dependency_overrides[auth.require_admin] = lambda: {"id": 1, "role": "admin"}
+    main.app.dependency_overrides[auth.current_user] = lambda: {"id": 1, "role": "admin"}
+    seen = []
+    real_scandir = main.os.scandir
+
+    def spy(p):
+        seen.append(str(p))
+        return real_scandir(p)
+    main.os.scandir = spy
+    try:
+        c = TestClient(main.app)
+        r = c.post("/api/settings/folders", json={"path": str(root)})
+        check(r.status_code == 200 and r.json()["dirs"] == ["Alpha", "beta", "gamma"],
+              f"POST 加 JSON 照常列出（{r.status_code}）")
+        seen.clear()
+        r = c.get("/api/settings/folders", params={"path": r"\\attacker.invalid\x"})
+        check(r.status_code in (404, 405) and not seen,
+              f"GET 不再處理、也沒有去讀那個路徑（{r.status_code}，{seen}）")
+        # what a form on another site can send: no JSON, so nothing is read
+        r = c.post("/api/settings/folders", data={"path": r"\\attacker.invalid\x"})
+        check(r.status_code == 422 and not seen,
+              f"表單送來的（跨網站做得到的形式）不處理（{r.status_code}，{seen}）")
+    finally:
+        main.os.scandir = real_scandir
+        main.app.dependency_overrides.clear()
 
 
 if __name__ == "__main__":

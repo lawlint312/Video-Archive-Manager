@@ -15,6 +15,7 @@ to refuse that rather than call it a repair.
 
 Run:  python tests/test_conceal.py      (from backend/)
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import shutil
 import subprocess
 import sys

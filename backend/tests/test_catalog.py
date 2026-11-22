@@ -6,6 +6,7 @@ the current schema cannot catch a missing migration (CLAUDE.md).
 
     python tests/test_catalog.py
 """
+import _tmpdata  # noqa: F401  (first: never the real data/ or cache/)
 import json
 import shutil
 import sqlite3
